@@ -328,8 +328,6 @@ def mark_as_added_to_anki(word):
     if not os.path.isdir(archived_sub_dir):
         os.makedirs(archived_sub_dir)
 
-    # TODO: 避免 archived 目录中同时存在太多文件
-    # 或许可以编写一个 archive_util 模块，检测目录文件太多时自动拆分到子目录中，提供 add 和 exists 接口
     os.rename(new_info_path, archived_path)
     return True
 
@@ -348,6 +346,4 @@ for i, word in enumerate(words):
     if already_have_info_for_word(word) and already_have_sound_for_word(word):
         if add_to_anki(word):
             mark_as_added_to_anki(word)
-
-# print(ask_gpt('我想用建立两个文件夹，其中一个用来存放刚获取到的信息，对这些信息进行处理之后，再将其移到另一个用于存放已归档信息的文件夹。请为这两个文件夹用英文单词命名'))
 
