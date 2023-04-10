@@ -85,19 +85,23 @@ def ask_gpt(prompt):
 
 
 
-def load_info(info):
-    parsed = {}
+def load_info(info, word):
+    parsed = { '单词': word }
     for line in info.splitlines():
-        tag, body = line.strip().split('：', 1)
-        parsed[tag] = body
+        if '：' in line:
+            tag, body = line.strip().split('：', 1)
+            parsed[tag] = body
     return parsed
 
 
-def check_info(info):
-    parsed = load_info(info)
+def check_info(info, word):
+    parsed = load_info(info, word)
     for tag in REQUIRED_TAGS:
         if tag not in parsed:
             print(f'PARSE ERROR! tag:{tag} word:{word}')
+            print('-----------------------------------')
+            print(info)
+            print('===================================')
             return False
     return True
 
@@ -107,8 +111,18 @@ def get_word_info(word):
 音标：/____/
 例句：____
 例句翻译：____'''
-    info = ask_gpt(prompt)
-    return check_info(info) and info or None
+    for retry in range(5):
+        try:
+            info = ask_gpt(prompt)
+            break
+        except Exception as e:
+            print('<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<')
+            print(e)
+            print('<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<')
+            print('retry:', retry)
+            continue
+
+    return check_info(info, word) and info or None
 
 
 def get_word_list():
@@ -257,8 +271,8 @@ def add_anki_card(note_fields):
     return response_json["result"]
 
 
-def build_anki_card(info, audio_url):
-    parsed = load_info(info)
+def build_anki_card(word, info, audio_url):
+    parsed = load_info(info, word)
     return {
         '正面': parsed['例句'],
         '背面': parsed['例句翻译'],
@@ -305,7 +319,7 @@ def add_to_anki(word):
     print(f'ADD_TO_ANKI: {word}')
     info = load_word_info(word)
     audio_url = upload_mp3_for_card(word)
-    card = build_anki_card(info, audio_url)
+    card = build_anki_card(word, info, audio_url)
     add_result = add_anki_card(card)
     return add_result and True or False
 
