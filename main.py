@@ -85,8 +85,8 @@ def ask_gpt(prompt):
 
 
 
-def load_info(info, word):
-    parsed = { '单词': word }
+def load_info(info, word, mean):
+    parsed = { '单词': word, '意思': mean }
     for line in info.splitlines():
         if '：' in line:
             tag, body = line.strip().split('：', 1)
@@ -94,8 +94,8 @@ def load_info(info, word):
     return parsed
 
 
-def check_info(info, word):
-    parsed = load_info(info, word)
+def check_info(info, word, mean):
+    parsed = load_info(info, word, mean)
     for tag in REQUIRED_TAGS:
         if tag not in parsed:
             print(f'PARSE ERROR! tag:{tag} word:{word}')
@@ -105,9 +105,10 @@ def check_info(info, word):
             return False
     return True
 
-def get_word_info(word):
+def get_word_info(word, mean):
+    mean = mean or '____'
     prompt = f'''单词：{word}
-意思：____
+意思：{mean}
 音标：/____/
 例句：____
 例句翻译：____'''
@@ -122,7 +123,7 @@ def get_word_info(word):
             print('retry:', retry)
             continue
 
-    return check_info(info, word) and info or None
+    return check_info(info, word, mean) and info or None
 
 
 def get_word_list():
@@ -131,7 +132,12 @@ def get_word_list():
         for line in f.readlines():
             if line.startswith('#'):
                 continue
-            words.append(line.strip())
+            c = line.strip()
+            if ':' in c:
+                word, mean = c.split(':', 1)
+            else:
+                word, mean = c, None
+            words.append((word, mean))
     return words
 
 
@@ -203,11 +209,11 @@ def download_mp3_for_word(word):
         print(f'DOWNLOADED MP3 FAILED {word}')
 
 
-def fetch_and_save_info(word):
+def fetch_and_save_info(word, mean):
     if already_have_info_for_word(word):
         return
     print(f'fetching info: {word}')
-    info = get_word_info(word)
+    info = get_word_info(word, mean)
     if info:
         save_word_info(word, info)
 
@@ -271,8 +277,8 @@ def add_anki_card(note_fields):
     return response_json["result"]
 
 
-def build_anki_card(word, info, audio_url):
-    parsed = load_info(info, word)
+def build_anki_card(word, mean, info, audio_url):
+    parsed = load_info(info, word, mean)
     return {
         '正面': parsed['例句'],
         '背面': parsed['例句翻译'],
@@ -315,11 +321,11 @@ def upload_mp3_for_card(word):
     return audio_url
 
 
-def add_to_anki(word):
+def add_to_anki(word, mean):
     print(f'ADD_TO_ANKI: {word}')
     info = load_word_info(word)
     audio_url = upload_mp3_for_card(word)
-    card = build_anki_card(word, info, audio_url)
+    card = build_anki_card(word, mean, info, audio_url)
     add_result = add_anki_card(card)
     return add_result and True or False
 
@@ -346,18 +352,18 @@ def mark_as_added_to_anki(word):
     return True
 
 
-words = get_word_list()
-n = len(words)
-for i, word in enumerate(words):
+wordlist = get_word_list()
+n = len(wordlist)
+for i, (word, mean) in enumerate(wordlist):
     print(f'{i+1} / {n}: {word}')
     if is_word_archieved(word):
         print(f'SKIP: already added to Anki: {word}')
         continue
 
-    fetch_and_save_info(word)
+    fetch_and_save_info(word, mean)
     fetch_and_save_sound(word)
 
     if already_have_info_for_word(word) and already_have_sound_for_word(word):
-        if add_to_anki(word):
+        if add_to_anki(word, mean):
             mark_as_added_to_anki(word)
 
