@@ -93,36 +93,68 @@ def ask_gpt(prompt):
 
 
 
-def load_info(info, word, mean):
-    parsed = { '单词': word, '意思': mean }
-    for line in info.splitlines():
-        if '：' in line:
-            tag, body = line.strip().split('：', 1)
-            parsed[tag] = body
-    return parsed
+#def load_info(info, word, mean):
+#    parsed = { '单词': word, '意思': mean }
+#    for line in info.splitlines():
+#        if '：' in line:
+#            tag, body = line.strip().split('：', 1)
+#            parsed[tag] = body
+#    return parsed
 
 
-def check_info(info, word, mean):
-    parsed = load_info(info, word, mean)
-    for tag in REQUIRED_TAGS:
-        if tag not in parsed:
-            print(f'PARSE ERROR! tag:{tag} word:{word}')
-            print('-----------------------------------')
-            print(info)
-            print('===================================')
-            return False
-    return True
+#def check_info(info, word, mean):
+#    parsed = load_info(info, word, mean)
+#    for tag in REQUIRED_TAGS:
+#        if tag not in parsed:
+#            print(f'PARSE ERROR! tag:{tag} word:{word}')
+#            print('-----------------------------------')
+#            print(info)
+#            print('===================================')
+#            return False
+#    return True
 
-def get_word_info(word, mean):
-    mean = mean or '____'
-    prompt = f'''单词：{word}
-意思：{mean}
-音标：/____/
-例句：____
-例句翻译：____'''
+
+def extract_valid_json_string(text):
+    s = text.find('{')
+    e = text.rfind('}')
+    json_string = text[s:e+1]
+    try:
+        info = json.loads(json_string)
+    except Exception as e:
+        return None
+
+    req_fields = ['word', 'pronunciation', 'definition', 'example1', 'example2', 'example3', 'example4', 'example5']
+    for f in req_fields:
+        if f not in info:
+            return None
+    return json_string
+
+
+def get_word_info_new(word):
+    prompt = '''请扮演一位专业的 ESL teacher，对给出的单词进行讲解，给出其音标、各种常用的意思、以及5个能从多方面展示其用法的例句。注意在例句中，使用 {{c1::word}} 标记来突出单词的位置。
+
+Return the answer as a JSON object in this format:
+```json
+{
+  "word": "grok",
+  "pronunciation": "/ˈɡrɑk/",
+  "definition": [
+    "代表一种深刻理解并完全领悟的概念，超越了简单的认知或者学习过程。",
+    "20世纪中期由美国科幻作家罗伯特·海因莱因在其小说《异星人》（Stranger in a Strange Land）中创造的词汇",
+    "在现代英语口语和网络文化中被广泛使用，特别是在科技和编程社群中，用来表达对某个复杂概念或技术从本质上彻底理解的意思。"
+  ],
+  "example1": "I finally {{c1::grokked}} the mathematical concept after studying it for hours.",
+  "example2": "After years of studying the subject, he finally {{c1::grokked}} the fundamental principles behind it.",
+  "example3": "She {{c1::groks}} computer programming in a way that few others do.",
+  "example4": "It takes time to truly {{c1::grok}} the complexities of human psychology.",
+  "example5": "I don't just understand coding; I {{c1::grok}} it."
+}
+```
+
+给出的单词是: ''' + f'{word}'
     for retry in range(5):
         try:
-            info = ask_gpt(prompt)
+            gpt_answer = ask_gpt(prompt)
             break
         except Exception as e:
             print('<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<')
@@ -131,7 +163,33 @@ def get_word_info(word, mean):
             print('retry:', retry)
             continue
 
-    return check_info(info, word, mean) and info or None
+    json_string = extract_valid_json_string(gpt_answer)
+    if not json_string:
+        print(f'PARSE ERROR!')
+        print('-----------------------------------')
+        print(gpt_answer)
+        print('===================================')
+    return json_string
+
+#def get_word_info(word, mean):
+#    mean = mean or '____'
+#    prompt = f'''单词：{word}
+#意思：{mean}
+#音标：/____/
+#例句：____
+#例句翻译：____'''
+#    for retry in range(5):
+#        try:
+#            info = ask_gpt(prompt)
+#            break
+#        except Exception as e:
+#            print('<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<')
+#            print(e)
+#            print('<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<')
+#            print('retry:', retry)
+#            continue
+#
+#    return check_info(info, word, mean) and info or None
 
 
 def get_word_list():
@@ -221,7 +279,8 @@ def fetch_and_save_info(word, mean):
     if already_have_info_for_word(word):
         return
     print(f'fetching info: {word}')
-    info = get_word_info(word, mean)
+    # info = get_word_info(word, mean)
+    info = get_word_info_new(word)
     if info:
         save_word_info(word, info)
 
@@ -248,7 +307,8 @@ def add_anki_card(note_fields):
     deck_name = "English::Arnan's English Sentences"
 
     # Set the model name to use for the new note
-    model_name = "基础"
+    # model_name = "基础"
+    model_name = "ShuffledCloze"
 
     # # Set the note fields (front and back)
     # note_fields = {"正面": front, "Back": back}
@@ -286,15 +346,28 @@ def add_anki_card(note_fields):
 
 
 def build_anki_card(word, mean, info, audio_url):
-    parsed = load_info(info, word, mean)
-    return {
-        '正面': parsed['例句'],
-        '背面': parsed['例句翻译'],
-        'Detail': f'{parsed["单词"]} {parsed["意思"]} {parsed["音标"]}',
-        'Audio': f'[sound:{audio_url}]',
-        'Sort Field': parsed["单词"],
-        'QuestionHint': ''
+    info = json.loads(info)
+    # parsed = load_info(info, word, mean)
+    # return {
+    #     '正面': parsed['例句'],
+    #     '背面': parsed['例句翻译'],
+    #     'Detail': f'{parsed["单词"]} {parsed["意思"]} {parsed["音标"]}',
+    #     'Audio': f'[sound:{audio_url}]',
+    #     'Sort Field': parsed["单词"],
+    #     'QuestionHint': ''
+    # }
+    def_ul = ''.join([f'<li><sub>{d}</sub></li>' for d in info['definition']])
+    card = {
+        's1': info['example1'],
+        's2': info['example2'],
+        's3': info['example3'],
+        's4': info['example4'],
+        's5': info['example5'],
+        'Back Extra': f'<b>{info["word"]}</b> {info["pronunciation"]}<br><ul>{def_ul}</ul>[sound:{audio_url}]',
+        'Sort Field': info['word'],
     }
+    print(card)
+    return card
 
 
 def file_to_base64(file_path):
@@ -360,18 +433,25 @@ def mark_as_added_to_anki(word):
     return True
 
 
-wordlist = get_word_list()
-n = len(wordlist)
-for i, (word, mean) in enumerate(wordlist):
-    print(f'{i+1} / {n}: {word}')
-    if is_word_archieved(word):
-        print(f'SKIP: already added to Anki: {word}')
-        continue
+def make_anki_cards_from_word_list():
+    wordlist = get_word_list()
+    n = len(wordlist)
+    finished = 0
+    for i, (word, mean) in enumerate(wordlist):
+        print(f'{i+1} / {n}: {word}')
+        if is_word_archieved(word):
+            print(f'SKIP: already added to Anki: {word}')
+            finished = finished + 1
+            continue
 
-    fetch_and_save_info(word, mean)
-    fetch_and_save_sound(word)
+        fetch_and_save_info(word, mean)
+        fetch_and_save_sound(word)
 
-    if already_have_info_for_word(word) and already_have_sound_for_word(word):
-        if add_to_anki(word, mean):
-            mark_as_added_to_anki(word)
+        if already_have_info_for_word(word) and already_have_sound_for_word(word):
+            if add_to_anki(word, mean):
+                mark_as_added_to_anki(word)
+                finished = finished + 1
+    print(f'FINISHED: {finished} / {n}')
 
+
+make_anki_cards_from_word_list()
