@@ -23,13 +23,15 @@ else:
 
 # Set your OpenAI API key and proxy settings
 OPENAI_API_KEY = config['OPENAI_API_KEY']
-PROXIES = config['PROXIES']
+# PROXIES = config['PROXIES']
 
 if OPENAI_API_KEY == SAMPLE_OPEN_API_KEY:
     print('please edit the config.json')
     sys.exit(1)
 
-API_URL = "https://api.openai.com/v1/chat/completions"
+# API_URL = "https://api.openai.com/v1/chat/completions"
+# API_URL = "https://api.ohmygpt.com/v1/chat/completions"
+API_URL = "https://aigptx.top/v1/chat/completions"
 LLM_MODEL = "gpt-3.5-turbo"
 TIMEOUT_SECONDS = 25
 REQUIRED_TAGS = ('单词', '意思', '音标', '例句', '例句翻译')
@@ -73,7 +75,7 @@ def ask_gpt(prompt):
     response = requests.post(
         url=API_URL,
         headers=headers,
-        proxies=PROXIES,
+        # proxies=PROXIES,
         json=payload,
         stream=False,
         timeout=TIMEOUT_SECONDS
