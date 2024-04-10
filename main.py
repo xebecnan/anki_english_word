@@ -83,6 +83,12 @@ def ask_gpt(prompt):
 
     # Extract the response text and return it
     answer = json.loads(response.text)
+    if 'error' in answer:
+        print('!! ERROR !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
+        if 'message' in answer['error']:
+            print(answer['error']['message'])
+        else:
+            print(answer['error'])
     return answer['choices'][0]['message']['content']
 
 
