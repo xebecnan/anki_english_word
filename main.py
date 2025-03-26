@@ -7,6 +7,7 @@ import json
 from bs4 import BeautifulSoup
 import base64
 import time
+import argparse
 
 SAMPLE_OPEN_API_KEY = 'sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
 
@@ -93,25 +94,25 @@ def ask_gpt(prompt):
 
 
 
-#def load_info(info, word, mean):
-#    parsed = { '单词': word, '意思': mean }
-#    for line in info.splitlines():
-#        if '：' in line:
-#            tag, body = line.strip().split('：', 1)
-#            parsed[tag] = body
-#    return parsed
+def load_info(info, word):
+    parsed = { '单词': word }
+    for line in info.splitlines():
+        if '：' in line:
+            tag, body = line.strip().split('：', 1)
+            parsed[tag] = body
+    return parsed
 
 
-#def check_info(info, word, mean):
-#    parsed = load_info(info, word, mean)
-#    for tag in REQUIRED_TAGS:
-#        if tag not in parsed:
-#            print(f'PARSE ERROR! tag:{tag} word:{word}')
-#            print('-----------------------------------')
-#            print(info)
-#            print('===================================')
-#            return False
-#    return True
+def check_info(info, word):
+    parsed = load_info(info, word)
+    for tag in REQUIRED_TAGS:
+        if tag not in parsed:
+            print(f'PARSE ERROR! tag:{tag} word:{word}')
+            print('-----------------------------------')
+            print(info)
+            print('===================================')
+            return False
+    return True
 
 
 def extract_valid_json_string(text):
@@ -151,6 +152,7 @@ Return the answer as a JSON object in this format:
 }
 ```
 
+请确保给出的单词包含在了每个例句中，且使用了 {{c1::word}} 标记来突出单词的位置。
 给出的单词是: ''' + f'{word}'
     for retry in range(5):
         try:
@@ -171,25 +173,24 @@ Return the answer as a JSON object in this format:
         print('===================================')
     return json_string
 
-#def get_word_info(word, mean):
-#    mean = mean or '____'
-#    prompt = f'''单词：{word}
-#意思：{mean}
-#音标：/____/
-#例句：____
-#例句翻译：____'''
-#    for retry in range(5):
-#        try:
-#            info = ask_gpt(prompt)
-#            break
-#        except Exception as e:
-#            print('<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<')
-#            print(e)
-#            print('<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<')
-#            print('retry:', retry)
-#            continue
-#
-#    return check_info(info, word, mean) and info or None
+def get_word_info_for_noun(word):
+    prompt = f'''单词：{word}
+意思：____
+音标：/____/
+例句：____
+例句翻译：____'''
+    for retry in range(5):
+        try:
+            info = ask_gpt(prompt)
+            break
+        except Exception as e:
+            print('<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<')
+            print(e)
+            print('<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<')
+            print('retry:', retry)
+            continue
+
+    return check_info(info, word) and info or None
 
 
 def get_word_list():
@@ -200,10 +201,10 @@ def get_word_list():
                 continue
             c = line.strip()
             if ':' in c:
-                word, mean = c.split(':', 1)
+                word, word_type = c.split(':', 1)
             else:
-                word, mean = c, None
-            words.append((word, mean))
+                word, word_type = c, None
+            words.append((word, word_type))
     return words
 
 
@@ -275,12 +276,14 @@ def download_mp3_for_word(word):
         print(f'DOWNLOADED MP3 FAILED {word}')
 
 
-def fetch_and_save_info(word, mean):
-    if already_have_info_for_word(word):
+def fetch_and_save_info(word, word_type, force):
+    if not force and already_have_info_for_word(word):
         return
     print(f'fetching info: {word}')
-    # info = get_word_info(word, mean)
-    info = get_word_info_new(word)
+    if word_type == '名词':
+        info = get_word_info_for_noun(word)
+    else:
+        info = get_word_info_new(word)
     if info:
         save_word_info(word, info)
 
@@ -296,7 +299,7 @@ def fetch_and_save_sound(word):
     download_mp3_for_word(word)
 
 
-def add_anki_card(note_fields):
+def add_anki_card(note_fields, word_type):
     # Set the URL for the Anki-Connect API
     url = "http://localhost:8765"
 
@@ -307,8 +310,10 @@ def add_anki_card(note_fields):
     deck_name = "English::Arnan's English Sentences"
 
     # Set the model name to use for the new note
-    # model_name = "基础"
-    model_name = "ShuffledCloze"
+    if word_type == "名词":
+        model_name = "基础"
+    else:
+        model_name = "ShuffledCloze"
 
     # # Set the note fields (front and back)
     # note_fields = {"正面": front, "Back": back}
@@ -333,6 +338,8 @@ def add_anki_card(note_fields):
     # Convert the request payload to JSON format
     request_json = json.dumps(request_payload)
 
+    # print(json.dumps(json.loads(request_json), indent=4))
+
     # Make a POST request to the Anki-Connect API with the request payload as the body
     response = requests.post(url, data=request_json)
 
@@ -345,26 +352,31 @@ def add_anki_card(note_fields):
     return response_json["result"]
 
 
-def build_anki_card(word, mean, info, audio_url):
+def build_anki_card(word, word_type, info, audio_url):
+    print('info:', info)
+    if word_type == '名词':
+        parsed = load_info(info, word)
+        return {
+            '正面': parsed['例句'],
+            '背面': parsed['例句翻译'],
+            'Detail': f'{parsed["单词"]} {parsed["意思"]} {parsed["音标"]}',
+            'Audio': f'[sound:{audio_url}]',
+            'Sort Field': parsed["单词"],
+            'QuestionHint': ''
+        }
+
     info = json.loads(info)
-    # parsed = load_info(info, word, mean)
-    # return {
-    #     '正面': parsed['例句'],
-    #     '背面': parsed['例句翻译'],
-    #     'Detail': f'{parsed["单词"]} {parsed["意思"]} {parsed["音标"]}',
-    #     'Audio': f'[sound:{audio_url}]',
-    #     'Sort Field': parsed["单词"],
-    #     'QuestionHint': ''
-    # }
     def_ul = ''.join([f'<li><sub>{d}</sub></li>' for d in info['definition']])
     card = {
+        'Explain': '{{c1::' + info['word'] + '}}',
         's1': info['example1'],
         's2': info['example2'],
         's3': info['example3'],
         's4': info['example4'],
         's5': info['example5'],
-        'Back Extra': f'<b>{info["word"]}</b> {info["pronunciation"]}<br><ul>{def_ul}</ul>[sound:{audio_url}]',
+        'Back Extra': f'<b>{info["word"]}</b> {info["pronunciation"]}<br><ul>{def_ul}</ul>',
         'Sort Field': info['word'],
+        'Audio': f'[sound:{audio_url}]',
     }
     print(card)
     return card
@@ -402,12 +414,12 @@ def upload_mp3_for_card(word):
     return audio_url
 
 
-def add_to_anki(word, mean):
-    print(f'ADD_TO_ANKI: {word}')
+def add_to_anki(word, word_type):
+    print(f'ADD_TO_ANKI: {word} ({word_type})')
     info = load_word_info(word)
     audio_url = upload_mp3_for_card(word)
-    card = build_anki_card(word, mean, info, audio_url)
-    add_result = add_anki_card(card)
+    card = build_anki_card(word, word_type, info, audio_url)
+    add_result = add_anki_card(card, word_type)
     return add_result and True or False
 
 
@@ -433,25 +445,48 @@ def mark_as_added_to_anki(word):
     return True
 
 
-def make_anki_cards_from_word_list():
+def make_anki_cards_from_word_list(force):
     wordlist = get_word_list()
     n = len(wordlist)
     finished = 0
-    for i, (word, mean) in enumerate(wordlist):
+    failed = []
+    skipped = []
+    for i, (word, word_type) in enumerate(wordlist):
         print(f'{i+1} / {n}: {word}')
         if is_word_archieved(word):
-            print(f'SKIP: already added to Anki: {word}')
-            finished = finished + 1
-            continue
+            if not force:
+                print(f'SKIP: already added to Anki: {word}')
+                skipped.append(word)
+                finished = finished + 1
+                continue
+            else:
+                print(f'FORCE: re-fetch info and sound: {word}')
 
-        fetch_and_save_info(word, mean)
+        fetch_and_save_info(word, word_type, force)
         fetch_and_save_sound(word)
 
         if already_have_info_for_word(word) and already_have_sound_for_word(word):
-            if add_to_anki(word, mean):
+            if add_to_anki(word, word_type):
                 mark_as_added_to_anki(word)
                 finished = finished + 1
+                continue
+
+        failed.append(word)
     print(f'FINISHED: {finished} / {n}')
+    if failed:
+        print(f'NO-ADDED: ', '\n'.join(failed))
+    if skipped:
+        print(f'SKIPPED: ', '\n'.join(skipped))
 
 
-make_anki_cards_from_word_list()
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-f', '--force', action='store_true', help='force to re-fetch info and sound')
+    args = parser.parse_args()
+
+    force = args.force
+    make_anki_cards_from_word_list(force)
+
+
+if __name__ == '__main__':
+    main()
