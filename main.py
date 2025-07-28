@@ -9,31 +9,33 @@ import base64
 import time
 import argparse
 
-SAMPLE_OPEN_API_KEY = 'sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+SAMPLE_API_KEY = 'sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
 
 if os.path.exists('config.json'):
     with open('config.json', 'r', encoding='utf-8') as f:
         config = json.load(f)
 else:
     config = {
-        "OPENAI_API_KEY": SAMPLE_OPEN_API_KEY,
+        "API_KEY": SAMPLE_API_KEY,
         "PROXIES": { "http": "http://localhost:8123", "https": "http://localhost:8123" }
     }
     with open('config.json', 'w', encoding='utf-8') as f:
         json.dump(config, f)
 
 # Set your OpenAI API key and proxy settings
-OPENAI_API_KEY = config['OPENAI_API_KEY']
+API_KEY = os.environ.get('DEEPSEEK_API_KEY_ANKI', config['API_KEY'])
 # PROXIES = config['PROXIES']
 
-if OPENAI_API_KEY == SAMPLE_OPEN_API_KEY:
-    print('please edit the config.json')
+if API_KEY == SAMPLE_API_KEY:
+    print('API_KEY not found')
     sys.exit(1)
 
 # API_URL = "https://api.openai.com/v1/chat/completions"
 # API_URL = "https://api.ohmygpt.com/v1/chat/completions"
-API_URL = "https://aigptx.top/v1/chat/completions"
-LLM_MODEL = "gpt-3.5-turbo"
+# API_URL = "https://aigptx.top/v1/chat/completions"
+API_URL = "https://api.deepseek.com/chat/completions"
+# LLM_MODEL = "gpt-3.5-turbo"
+LLM_MODEL = "deepseek-chat"
 TIMEOUT_SECONDS = 25
 REQUIRED_TAGS = ('单词', '意思', '音标', '例句', '例句翻译')
 ARCHIVED_DIR = 'archived'
@@ -41,7 +43,7 @@ ARCHIVED_DIR = 'archived'
 # Function to post a query to ChatGPT and retrieve a response
 def ask_gpt(prompt):
     # Set the parameters for the API request
-    model_engine = "davinci"  # Choose the GPT model engine to use
+    # model_engine = "davinci"  # Choose the GPT model engine to use
     max_tokens = 50  # Set the maximum number of tokens in the response
     temperature = 0.5  # Set the "creativity" of the response
     stop = "\n"  # Set the stop sequence for the response
@@ -49,7 +51,7 @@ def ask_gpt(prompt):
     # Set the headers for the API request
     headers = {
         "Content-Type": "application/json",
-        "Authorization": f"Bearer {OPENAI_API_KEY}",
+        "Authorization": f"Bearer {API_KEY}",
     }
 
     # Set the data for the API request
