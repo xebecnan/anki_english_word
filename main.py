@@ -368,13 +368,13 @@ def build_anki_card(word, word_type, info, audio_url):
     info = json.loads(info)
     def_ul = ''.join([f'<li><sub>{d}</sub></li>' for d in info['definition']])
     card = {
-        'Explain': '{{c1::' + info['word'] + '}}',
+        'Explain': '{{c1::' + info['word'] + '}}<br>' + f'<ul>{def_ul}</ul>',
         's1': info['example1'],
         's2': info['example2'],
         's3': info['example3'],
         's4': info['example4'],
         's5': info['example5'],
-        'Back Extra': f'<b>{info["word"]}</b> {info["pronunciation"]}<br><ul>{def_ul}</ul>',
+        'Back Extra': f'<b>{info["word"]}</b> {info["pronunciation"]}',
         'Sort Field': info['word'],
         'Audio': f'[sound:{audio_url}]',
     }
