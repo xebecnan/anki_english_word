@@ -23,7 +23,7 @@ else:
         json.dump(config, f)
 
 # Set your OpenAI API key and proxy settings
-API_KEY = os.environ.get('DEEPSEEK_API_KEY_ANKI', config['API_KEY'])
+API_KEY = os.environ.get('DEEPSEEK_API_KEY', config.get('API_KEY', SAMPLE_API_KEY))
 # PROXIES = config['PROXIES']
 
 if API_KEY == SAMPLE_API_KEY:
