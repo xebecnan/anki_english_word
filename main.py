@@ -134,9 +134,12 @@ def extract_valid_json_string(text):
 
 
 def get_word_info_new(word):
-    prompt = '''请扮演一位专业的 ESL teacher，对给出的单词进行讲解，给出其音标、各种常用的意思、以及5个能从多方面展示其用法的例句。注意在例句中，使用 {{c1::word}} 标记来突出单词的位置。
+    prompt = '''请扮演专业的面向中高级学习者的 ESL teacher，对给出的单词进行讲解，给出其音标、各种常用的意思、以及5个能从多方面展示其用法的例句。
 
-Return the answer as a JSON object in this format:
+## 输出格式要求
+Return the answer as a JSON object.
+
+## 示例1
 ```json
 {
   "word": "grok",
@@ -154,8 +157,36 @@ Return the answer as a JSON object in this format:
 }
 ```
 
-请确保给出的单词包含在了每个例句中，且使用了 {{c1::word}} 标记来突出单词的位置。
-给出的单词是: ''' + f'{word}'
+## 示例2
+```json
+{
+  "word": "dough",
+  "pronunciation": "/doʊ/",
+  "definition": [
+    "n. 生面团",
+    "指用于制作面包、糕点等的生面团，通常由面粉、水和其他成分混合而成",
+    "在俚语中表示金钱，尤指现金",
+    "指任何具有类似面团稠度的柔软、可塑物质"
+  ],
+  "example1": "She kneaded the {{c1::dough}} for ten minutes until it was smooth and elastic.",
+  "example2": "I need to earn some more {{c1::dough}} before I can afford that vacation.",
+  "example3": "After adding the yeast, let the {{c1::dough}} rise in a warm place for an hour.",
+  "example4": "He's rolling in {{c1::dough}} since he started his new business.",
+  "example5": "The children enjoyed playing with the salt {{c1::dough}} they made in art class."
+}
+```
+
+## 注意
+- 确保在每个例句中，使用 {{c1::word}} 标记来突出单词的位置。与 Anki Cloze 要求格式兼容。
+- 请确保给出的单词包含在了每个例句中，且使用了 {{c1::word}} 标记来突出单词的位置，符合 Anki Cloze 要求格式。
+- 若单词有多词性，请在 definition 中分条列出。
+- definition 使用自然的中文释义。
+- 给出的例句尽量覆盖不同语境、不同语法位置。
+- 尽量选取使用单数、现在时态的例句。
+- Do not write any commentary outside the JSON.
+
+## 输入
+要处理的单词是: ''' + f'{word}'
     for retry in range(5):
         try:
             gpt_answer = ask_gpt(prompt)
