@@ -322,12 +322,16 @@ def fetch_and_save_info(word, word_type, force):
 
 
 def already_have_sound_for_word(word):
+    if check_media_for_mp3(word):
+        return True
+
     filepath = get_mp3_path_for_word(word)
     return os.path.exists(filepath)
 
 
 def fetch_and_save_sound(word):
     if already_have_sound_for_word(word):
+        print('AUDIO ALREADY EXIST:', audio_url)
         return
     download_mp3_for_word(word)
 
@@ -421,6 +425,38 @@ def file_to_base64(file_path):
     return base64.b64encode(data).decode("utf-8")
 
 
+def check_media_for_file(filename):
+    request_payload = {
+        "action": "retrieveMediaFile",
+        "version": 6,
+        "params": {
+            "filename": filename,
+        }
+    }
+
+    # Make a POST request to the Anki-Connect API with the request payload as the body
+    url = "http://localhost:8765"
+    request_json = json.dumps(request_payload)
+    response = requests.post(url, data=request_json)
+
+    # Parse the response JSON and get the URL of the uploaded file
+    response_json = json.loads(response.text)
+    err = response_json.get('error', None)
+    if response_json['result']:
+        return filename
+    else:
+        return None
+
+
+def check_media_for_mp3(word):
+    filepath = get_mp3_path_for_word(word)
+    for filename in [ '_EAUTO_' + os.path.basename(filepath), os.path.basename(filepath) ]:
+        audio_url = check_media_for_file(filename)
+        if audio_url:
+            return audio_url
+    return None
+
+
 def upload_mp3_for_card(word):
     # Construct the request payload as a Python dictionary
     filepath = get_mp3_path_for_word(word)
@@ -450,7 +486,7 @@ def upload_mp3_for_card(word):
 def add_to_anki(word, word_type):
     print(f'ADD_TO_ANKI: {word} ({word_type})')
     info = load_word_info(word)
-    audio_url = upload_mp3_for_card(word)
+    audio_url = check_media_for_mp3(word) or upload_mp3_for_card(word)
     card = build_anki_card(word, word_type, info, audio_url)
     add_result = add_anki_card(card, word_type)
     return add_result and True or False
