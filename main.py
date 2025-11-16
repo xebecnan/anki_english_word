@@ -548,13 +548,45 @@ def make_anki_cards_from_word_list(force):
         print(f'SKIPPED: ', '\n'.join(skipped))
 
 
+def fetch_sounds_for_cards(force):
+    wordlist = get_word_list()
+    n = len(wordlist)
+    finished = 0
+    failed = []
+    skipped = []
+    for i, (word, word_type) in enumerate(wordlist):
+        print(f'{i+1} / {n}: {word}')
+        if not force and already_have_sound_for_word(word):
+            print(f'SKIP: already have sound: {word}')
+            skipped.append(word)
+            finished = finished + 1
+            continue
+
+        fetch_and_save_sound(word)
+
+        if already_have_sound_for_word(word):
+            finished = finished + 1
+        else:
+            failed.append(word)
+    print(f'FINISHED: {finished} / {n}')
+    if failed:
+        print(f'NO-SOUND: ', '\n'.join(failed))
+    if skipped:
+        print(f'SKIPPED: ', '\n'.join(skipped))
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-f', '--force', action='store_true', help='force to re-fetch info and sound')
+    parser.add_argument('-s', '--sound-only', action='store_true', help='fetch sound only')
     args = parser.parse_args()
 
     force = args.force
-    make_anki_cards_from_word_list(force)
+
+    if args.sound_only:
+        fetch_sounds_for_cards(force)
+    else:
+        make_anki_cards_from_word_list(force)
 
 
 if __name__ == '__main__':
