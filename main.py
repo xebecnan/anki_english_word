@@ -290,12 +290,19 @@ def get_pronunciation_mp3(word):
     url = f"https://dict.youdao.com/dictvoice?audio={word}&type=2"
 
     # Make a GET request to the audio URL and return the binary content
-    response = requests.get(url)
-
-    if response.ok:
-        return response.content
-    else:
-        return None
+    for retry in range(5):
+        try:
+            response = requests.get(url)
+            if response.ok:
+                return response.content
+            else:
+                print(f'Request failed with status {response.status_code}, retry {retry + 1}')
+        except Exception as e:
+            print(f'Request failed with exception: {e}, retry {retry + 1}')
+            if retry < 4:
+                time.sleep(2 ** retry)  # Exponential backoff: 1, 2, 4, 8 seconds
+                continue
+    return None
 
 
 def download_mp3_for_word(word):
