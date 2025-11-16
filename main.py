@@ -322,11 +322,14 @@ def fetch_and_save_info(word, word_type, force):
 
 
 def already_have_sound_for_word(word):
+    filepath = get_mp3_path_for_word(word)
+    if os.path.exists(filepath):
+        return True
+
     if check_media_for_mp3(word):
         return True
 
-    filepath = get_mp3_path_for_word(word)
-    return os.path.exists(filepath)
+    return False
 
 
 def fetch_and_save_sound(word):
