@@ -331,7 +331,7 @@ def already_have_sound_for_word(word):
 
 def fetch_and_save_sound(word):
     if already_have_sound_for_word(word):
-        print('AUDIO ALREADY EXIST:', audio_url)
+        print('AUDIO ALREADY EXIST:', word)
         return
     download_mp3_for_word(word)
 
