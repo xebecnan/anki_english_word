@@ -8,6 +8,7 @@ from bs4 import BeautifulSoup
 import base64
 import time
 import argparse
+from gtts import gTTS
 
 SAMPLE_API_KEY = 'sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
 
@@ -24,7 +25,7 @@ else:
 
 # Set your OpenAI API key and proxy settings
 API_KEY = os.environ.get('DEEPSEEK_API_KEY', config.get('API_KEY', SAMPLE_API_KEY))
-# PROXIES = config['PROXIES']
+PROXIES = config['PROXIES']
 
 if API_KEY == SAMPLE_API_KEY:
     print('API_KEY not found')
@@ -291,6 +292,9 @@ def get_pronunciation_mp3(word):
 
     # Make a GET request to the audio URL and return the binary content
     for retry in range(5):
+        if retry > 0:
+            print(f'Retrying... sleep for {2**retry} seconds')
+            time.sleep(2 ** retry)
         try:
             response = requests.get(url)
             if response.ok:
@@ -299,21 +303,31 @@ def get_pronunciation_mp3(word):
                 print(f'Request failed with status {response.status_code}, retry {retry + 1}')
         except Exception as e:
             print(f'Request failed with exception: {e}, retry {retry + 1}')
-            if retry < 4:
-                time.sleep(2 ** retry)  # Exponential backoff: 1, 2, 4, 8 seconds
-                continue
     return None
 
 
 def download_mp3_for_word(word):
     print(f'fetching MP3: {word}')
+    filepath = get_mp3_path_for_word(word)
+
+    # 尝试从有道获取
     mp3_content = get_pronunciation_mp3(word)
     if mp3_content:
-        filepath = get_mp3_path_for_word(word)
         with open(filepath, "wb") as f:
             f.write(mp3_content)
-    else:
-        print(f'DOWNLOADED MP3 FAILED {word}')
+        return
+
+    print(f'DOWNLOADED MP3 FAILED {word}')
+    print('try google tts')
+
+    # 尝试从 google translate 获取
+    assert 'HTTP_PROXY' not in os.environ
+    assert 'HTTPS_PROXY' not in os.environ
+    os.environ['HTTP_PROXY'] = PROXIES['http']
+    os.environ['HTTPS_PROXY'] = PROXIES['https']
+    gTTS(text=word, lang='en', slow=False).save(filepath)
+    del os.environ['HTTP_PROXY']
+    del os.environ['HTTPS_PROXY']
 
 
 def fetch_and_save_info(word, word_type, force):
