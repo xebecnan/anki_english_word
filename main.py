@@ -143,18 +143,19 @@ Return the answer as a JSON object.
 ## 示例1
 ```json
 {
-  "word": "grok",
-  "pronunciation": "/ˈɡrɑk/",
+  "word": "beguiling",
+  "pronunciation": "/bɪˈɡaɪlɪŋ/",
   "definition": [
-    "代表一种深刻理解并完全领悟的概念，超越了简单的认知或者学习过程。",
-    "20世纪中期由美国科幻作家罗伯特·海因莱因在其小说《异星人》（Stranger in a Strange Land）中创造的词汇",
-    "在现代英语口语和网络文化中被广泛使用，特别是在科技和编程社群中，用来表达对某个复杂概念或技术从本质上彻底理解的意思。"
+    "adj. 欺骗性的，诱骗的",
+    "adj. 迷人的，有魅力的",
+    "指通过欺骗或诡计使人误入歧途的行为或特质",
+    "形容具有强烈吸引力或魅力的外表或品质，可能带有欺骗性"
   ],
-  "example1": "I finally {{c1::grokked}} the mathematical concept after studying it for hours.",
-  "example2": "After years of studying the subject, he finally {{c1::grokked}} the fundamental principles behind it.",
-  "example3": "She {{c1::groks}} computer programming in a way that few others do.",
-  "example4": "It takes time to truly {{c1::grok}} the complexities of human psychology.",
-  "example5": "I don't just understand coding; I {{c1::grok}} it."
+  "example1": "Her {{c1::beguiling}} smile hid a much more calculating nature.",
+  "example2": "The {{c1::beguiling}} simplicity of the proposal made everyone overlook its potential risks.",
+  "example3": "The salesman's {{c1::beguiling}} manner convinced many to buy the questionable product.",
+  "example4": "The {{c1::beguiling}} melody of the song stayed with me long after the concert ended.",
+  "example5": "\"{{c1::Beguiling}}\" is a word we use to describe something that is very attractive or charming in a way that can trick or mislead you, but not always in a bad way."
 }
 ```
 
