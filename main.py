@@ -572,6 +572,33 @@ def make_anki_cards_from_word_list(force):
         print(f'SKIPPED: ', '\n'.join(skipped))
 
 
+def fetch_info_for_cards(force):
+    wordlist = get_word_list()
+    n = len(wordlist)
+    finished = 0
+    failed = []
+    skipped = []
+    for i, (word, word_type) in enumerate(wordlist):
+        print(f'{i+1} / {n}: {word}')
+        if not force and already_have_info_for_word(word):
+            print(f'SKIP: already have info: {word}')
+            skipped.append(word)
+            finished = finished + 1
+            continue
+
+        fetch_and_save_info(word, word_type, force)
+
+        if already_have_info_for_word(word):
+            finished = finished + 1
+        else:
+            failed.append(word)
+    print(f'FINISHED: {finished} / {n}')
+    if failed:
+        print(f'NO-INFO: ', '\n'.join(failed))
+    if skipped:
+        print(f'SKIPPED: ', '\n'.join(skipped))
+
+
 def fetch_sounds_for_cards(force):
     wordlist = get_word_list()
     n = len(wordlist)
@@ -603,12 +630,15 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-f', '--force', action='store_true', help='force to re-fetch info and sound')
     parser.add_argument('-s', '--sound-only', action='store_true', help='fetch sound only')
+    parser.add_argument('-i', '--info-only', action='store_true', help='fetch info only')
     args = parser.parse_args()
 
     force = args.force
 
     if args.sound_only:
         fetch_sounds_for_cards(force)
+    elif args.info_only:
+        fetch_info_for_cards(force)
     else:
         make_anki_cards_from_word_list(force)
 
