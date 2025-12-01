@@ -182,8 +182,11 @@ Return the answer as a JSON object.
 - 确保在每个例句中，使用 {{c1::word}} 标记来突出单词的位置。与 Anki Cloze 要求格式兼容。
 - 请确保给出的单词包含在了每个例句中，且使用了 {{c1::word}} 标记来突出单词的位置，符合 Anki Cloze 要求格式。
 - 若单词有多词性，请在 definition 中分条列出。
+- 尽量指出单词与常见同义词相比在使用上需要注意的细微差别。
 - definition 使用自然的中文释义。
+- definition 中包含了 word 的地方，也改为使用 {{c1::word}} 的形式。
 - 给出的例句尽量覆盖不同语境、不同语法位置。
+- 例句可以包含一句以 "{{c1::word}} is a word ..." 的形式包含单词英文释义的句子。
 - 尽量选取使用单数、现在时态的例句。
 - Do not write any commentary outside the JSON.
 
