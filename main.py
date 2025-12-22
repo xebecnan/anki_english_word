@@ -143,19 +143,19 @@ Return the answer as a JSON object.
 ## 示例1
 ```json
 {
-  "word": "beguiling",
-  "pronunciation": "/bɪˈɡaɪlɪŋ/",
-  "definition": [
-    "adj. 欺骗性的，诱骗的",
-    "adj. 迷人的，有魅力的",
-    "指通过欺骗或诡计使人误入歧途的行为或特质",
-    "形容具有强烈吸引力或魅力的外表或品质，可能带有欺骗性"
-  ],
-  "example1": "Her {{c1::beguiling}} smile hid a much more calculating nature.",
-  "example2": "The {{c1::beguiling}} simplicity of the proposal made everyone overlook its potential risks.",
-  "example3": "The salesman's {{c1::beguiling}} manner convinced many to buy the questionable product.",
-  "example4": "The {{c1::beguiling}} melody of the song stayed with me long after the concert ended.",
-  "example5": "\"{{c1::Beguiling}}\" is a word we use to describe something that is very attractive or charming in a way that can trick or mislead you, but not always in a bad way."
+    "word": "savvy",
+    "pronunciation": "/ˈsævi/",
+    "definition": [
+        "n. 实际知识，见识，悟性。指在特定领域（尤指商业或政治）的实用理解和精明判断力。",
+        "adj. 精明的，有见识的，懂行的。形容对某事有深刻理解和实际知识的人。",
+        "v. 理解，懂（非正式用法，尤其用于疑问句或否定句）。",
+        "注意：作为名词时，常与特定领域连用，如 'political {{c1::savvy}}'（政治悟性）。作为形容词时，常置于名词后构成复合形容词，如 'tech-{{c1::savvy}}'（精通科技的）。与 'knowledgeable'（知识渊博的）相比，'{{c1::savvy}}' 更强调实用的、街头智慧式的精明。"
+    ],
+    "example1": "She has impressive business {{c1::savvy}}, which is why her startup has been so successful.",
+    "example2": "To succeed in today's market, you need to be financially {{c1::savvy}} and aware of the latest trends.",
+    "example3": "I don't think he {{c1::savvies}} the full implications of this deal; we need to explain it more clearly.",
+    "example4": "The campaign was run by a team of politically {{c1::savvy}} advisors who knew how to connect with voters.",
+    "example5": "\"{{c1::Savvy}}\" is a word we use to describe practical knowledge, understanding, or shrewdness, especially in a particular field like business or technology."
 }
 ```
 
