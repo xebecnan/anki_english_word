@@ -234,15 +234,34 @@ def get_word_info_for_noun(word):
 def get_word_list():
     words = []
     with open('wordlist.txt', 'r', encoding='utf-8') as f:
-        for line in f.readlines():
-            if line.startswith('#'):
+        for line_num, line in enumerate(f, 1):
+            line = line.strip()
+            if not line or line.startswith('#'):
                 continue
-            c = line.strip()
-            if ':' in c:
-                word, word_type = c.split(':', 1)
-            else:
-                word, word_type = c, None
-            words.append((word, word_type))
+
+            parts = line.split(':', 2)
+
+            # Ensure we have at least a word
+            if not parts or not parts[0]:
+                print(f"Warning: Line {line_num} has no word: '{line}'")
+                continue
+
+            word = parts[0].strip()
+            if not word:
+                print(f"Warning: Line {line_num} has empty word: '{line}'")
+                continue
+
+            # Set defaults for optional fields
+            word_type = 'default'
+            word_lang = 'en'  # Default to English
+
+            if len(parts) > 1:
+                word_type = parts[1].strip() if parts[1].strip() else word_type
+
+            if len(parts) > 2:
+                word_lang = parts[2].strip() if parts[2].strip() else word_lang
+
+            words.append((word, word_type, word_lang))
     return words
 
 
@@ -310,26 +329,27 @@ def get_pronunciation_mp3(word):
     return None
 
 
-def download_mp3_for_word(word):
+def download_mp3_for_word(word, lang):
     print(f'fetching MP3: {word}')
     filepath = get_mp3_path_for_word(word)
 
     # 尝试从有道获取
-    mp3_content = get_pronunciation_mp3(word)
-    if mp3_content:
-        with open(filepath, "wb") as f:
-            f.write(mp3_content)
-        return
+    if lang == 'en':
+        mp3_content = get_pronunciation_mp3(word)
+        if mp3_content:
+            with open(filepath, "wb") as f:
+                f.write(mp3_content)
+            return
 
-    print(f'DOWNLOADED MP3 FAILED {word}')
-    print('try google tts')
+        print(f'DOWNLOADED MP3 FAILED {word}')
+        print('try google tts')
 
     # 尝试从 google translate 获取
     assert 'HTTP_PROXY' not in os.environ
     assert 'HTTPS_PROXY' not in os.environ
     os.environ['HTTP_PROXY'] = PROXIES['http']
     os.environ['HTTPS_PROXY'] = PROXIES['https']
-    gTTS(text=word, lang='en', slow=False).save(filepath)
+    gTTS(text=word, lang=lang, slow=False).save(filepath)
     del os.environ['HTTP_PROXY']
     del os.environ['HTTPS_PROXY']
 
@@ -346,22 +366,26 @@ def fetch_and_save_info(word, word_type, force):
         save_word_info(word, info)
 
 
-def already_have_sound_for_word(word):
+def mp3_exist_for_word(word):
     filepath = get_mp3_path_for_word(word)
-    if os.path.exists(filepath):
+    return os.path.exists(filepath)
+
+
+def sound_exist_for_word(word):
+    if mp3_exist_for_word(word):
         return True
 
-    if check_media_for_mp3(word):
+    if anki_media_exist_for_word(word):
         return True
 
     return False
 
 
-def fetch_and_save_sound(word):
-    if already_have_sound_for_word(word):
+def fetch_and_save_sound(word, word_lang):
+    if sound_exist_for_word(word):
         print('AUDIO ALREADY EXIST:', word)
         return
-    download_mp3_for_word(word)
+    download_mp3_for_word(word, word_lang)
 
 
 def add_anki_card(note_fields, word_type):
@@ -476,7 +500,7 @@ def check_media_for_file(filename):
         return None
 
 
-def check_media_for_mp3(word):
+def anki_media_exist_for_word(word):
     filepath = get_mp3_path_for_word(word)
     for filename in [ '_EAUTO_' + os.path.basename(filepath), os.path.basename(filepath) ]:
         audio_url = check_media_for_file(filename)
@@ -514,7 +538,7 @@ def upload_mp3_for_card(word):
 def add_to_anki(word, word_type):
     print(f'ADD_TO_ANKI: {word} ({word_type})')
     info = load_word_info(word)
-    audio_url = check_media_for_mp3(word) or upload_mp3_for_card(word)
+    audio_url = anki_media_exist_for_word(word) or upload_mp3_for_card(word)
     card = build_anki_card(word, word_type, info, audio_url)
     add_result = add_anki_card(card, word_type)
     return add_result and True or False
@@ -548,7 +572,7 @@ def make_anki_cards_from_word_list(force):
     finished = 0
     failed = []
     skipped = []
-    for i, (word, word_type) in enumerate(wordlist):
+    for i, (word, word_type, word_lang) in enumerate(wordlist):
         print(f'{i+1} / {n}: {word}')
         if is_word_archieved(word):
             if not force:
@@ -560,9 +584,9 @@ def make_anki_cards_from_word_list(force):
                 print(f'FORCE: re-fetch info and sound: {word}')
 
         fetch_and_save_info(word, word_type, force)
-        fetch_and_save_sound(word)
+        fetch_and_save_sound(word, word_lang)
 
-        if already_have_info_for_word(word) and already_have_sound_for_word(word):
+        if already_have_info_for_word(word) and sound_exist_for_word(word):
             if add_to_anki(word, word_type):
                 mark_as_added_to_anki(word)
                 finished = finished + 1
@@ -582,7 +606,7 @@ def fetch_info_for_cards(force):
     finished = 0
     failed = []
     skipped = []
-    for i, (word, word_type) in enumerate(wordlist):
+    for i, (word, word_type, word_lang) in enumerate(wordlist):
         print(f'{i+1} / {n}: {word}')
         if not force and already_have_info_for_word(word):
             print(f'SKIP: already have info: {word}')
@@ -609,20 +633,55 @@ def fetch_sounds_for_cards(force):
     finished = 0
     failed = []
     skipped = []
-    for i, (word, word_type) in enumerate(wordlist):
+    for i, (word, word_type, word_lang) in enumerate(wordlist):
         print(f'{i+1} / {n}: {word}')
-        if not force and already_have_sound_for_word(word):
+        if not force and sound_exist_for_word(word):
             print(f'SKIP: already have sound: {word}')
             skipped.append(word)
             finished = finished + 1
             continue
 
-        fetch_and_save_sound(word)
+        fetch_and_save_sound(word, word_lang)
 
-        if already_have_sound_for_word(word):
+        if sound_exist_for_word(word):
             finished = finished + 1
         else:
             failed.append(word)
+    print(f'FINISHED: {finished} / {n}')
+    if failed:
+        print(f'NO-SOUND: ', '\n'.join(failed))
+    if skipped:
+        print(f'SKIPPED: ', '\n'.join(skipped))
+
+
+def fetch_and_store_sounds(force):
+    wordlist = get_word_list()
+    n = len(wordlist)
+    finished = 0
+    failed = []
+    skipped = []
+    for i, (word, word_type, word_lang) in enumerate(wordlist):
+        print(f'{i+1} / {n}: {word}')
+        if not force and anki_media_exist_for_word(word):
+            print(f'[SKIP] no need to fetch sound: {word}')
+            skipped.append(word)
+            finished = finished + 1
+            continue
+
+        download_mp3_for_word(word, word_lang)
+        if not mp3_exist_for_word(word):
+            print(f'[FAIL] download mp3 failed: {word}')
+            failed.append(word)
+            continue
+
+        audio_url = upload_mp3_for_card(word)
+        if not audio_url:
+            print(f'[FAIL] download mp3 failed: {word}')
+            failed.append(word)
+            continue
+
+        print(f'[DONE] {audio_url}')
+        finished = finished + 1
     print(f'FINISHED: {finished} / {n}')
     if failed:
         print(f'NO-SOUND: ', '\n'.join(failed))
@@ -634,6 +693,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-f', '--force', action='store_true', help='force to re-fetch info and sound')
     parser.add_argument('-s', '--sound-only', action='store_true', help='fetch sound only')
+    parser.add_argument('-S', '--store-sound', action='store_true', help='fetch and store sound')
     parser.add_argument('-i', '--info-only', action='store_true', help='fetch info only')
     args = parser.parse_args()
 
@@ -641,6 +701,8 @@ def main():
 
     if args.sound_only:
         fetch_sounds_for_cards(force)
+    elif args.store_sound:
+        fetch_and_store_sounds(force)
     elif args.info_only:
         fetch_info_for_cards(force)
     else:
