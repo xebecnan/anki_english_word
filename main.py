@@ -329,12 +329,12 @@ def get_pronunciation_mp3(word):
     return None
 
 
-def download_mp3_for_word(word, lang):
+def download_mp3_for_word(word, lang, use_google_sound):
     print(f'fetching MP3: {word}')
     filepath = get_mp3_path_for_word(word)
 
     # 尝试从有道获取
-    if lang == 'en':
+    if lang == 'en' and not use_google_sound:
         mp3_content = get_pronunciation_mp3(word)
         if mp3_content:
             with open(filepath, "wb") as f:
@@ -381,11 +381,11 @@ def sound_exist_for_word(word):
     return False
 
 
-def fetch_and_save_sound(word, word_lang):
+def fetch_and_save_sound(word, word_lang, use_google_sound):
     if sound_exist_for_word(word):
         print('AUDIO ALREADY EXIST:', word)
         return
-    download_mp3_for_word(word, word_lang)
+    download_mp3_for_word(word, word_lang, use_google_sound)
 
 
 def add_anki_card(note_fields, word_type):
@@ -566,7 +566,7 @@ def mark_as_added_to_anki(word):
     return True
 
 
-def make_anki_cards_from_word_list(force):
+def make_anki_cards_from_word_list(force, use_google_sound):
     wordlist = get_word_list()
     n = len(wordlist)
     finished = 0
@@ -584,7 +584,7 @@ def make_anki_cards_from_word_list(force):
                 print(f'FORCE: re-fetch info and sound: {word}')
 
         fetch_and_save_info(word, word_type, force)
-        fetch_and_save_sound(word, word_lang)
+        fetch_and_save_sound(word, word_lang, use_google_sound)
 
         if already_have_info_for_word(word) and sound_exist_for_word(word):
             if add_to_anki(word, word_type):
@@ -627,7 +627,7 @@ def fetch_info_for_cards(force):
         print(f'SKIPPED: ', '\n'.join(skipped))
 
 
-def fetch_sounds_for_cards(force):
+def fetch_sounds_for_cards(force, use_google_sound):
     wordlist = get_word_list()
     n = len(wordlist)
     finished = 0
@@ -641,7 +641,7 @@ def fetch_sounds_for_cards(force):
             finished = finished + 1
             continue
 
-        fetch_and_save_sound(word, word_lang)
+        fetch_and_save_sound(word, word_lang, use_google_sound)
 
         if sound_exist_for_word(word):
             finished = finished + 1
@@ -654,7 +654,7 @@ def fetch_sounds_for_cards(force):
         print(f'SKIPPED: ', '\n'.join(skipped))
 
 
-def fetch_and_store_sounds(force):
+def fetch_and_store_sounds(force, use_google_sound):
     wordlist = get_word_list()
     n = len(wordlist)
     finished = 0
@@ -668,7 +668,7 @@ def fetch_and_store_sounds(force):
             finished = finished + 1
             continue
 
-        download_mp3_for_word(word, word_lang)
+        download_mp3_for_word(word, word_lang, use_google_sound)
         if not mp3_exist_for_word(word):
             print(f'[FAIL] download mp3 failed: {word}')
             failed.append(word)
@@ -694,19 +694,21 @@ def main():
     parser.add_argument('-f', '--force', action='store_true', help='force to re-fetch info and sound')
     parser.add_argument('-s', '--sound-only', action='store_true', help='fetch sound only')
     parser.add_argument('-S', '--store-sound', action='store_true', help='fetch and store sound')
+    parser.add_argument('-g', '--google-sound', action='store_true', help='fetch sound from google')
     parser.add_argument('-i', '--info-only', action='store_true', help='fetch info only')
     args = parser.parse_args()
 
     force = args.force
+    use_google_sound = args.google_sound
 
     if args.sound_only:
-        fetch_sounds_for_cards(force)
+        fetch_sounds_for_cards(force, use_google_sound)
     elif args.store_sound:
-        fetch_and_store_sounds(force)
+        fetch_and_store_sounds(force, use_google_sound)
     elif args.info_only:
         fetch_info_for_cards(force)
     else:
-        make_anki_cards_from_word_list(force)
+        make_anki_cards_from_word_list(force, use_google_sound)
 
 
 if __name__ == '__main__':
