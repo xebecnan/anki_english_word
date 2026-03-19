@@ -135,63 +135,8 @@ def extract_valid_json_string(text):
 
 
 def get_word_info_new(word):
-    prompt = '''请扮演专业的面向中高级学习者的 ESL teacher，对给出的单词进行讲解，给出其音标、各种常用的意思、以及5个能从多方面展示其用法的例句。
-
-## 输出格式要求
-Return the answer as a JSON object.
-
-## 示例1
-```json
-{
-    "word": "savvy",
-    "pronunciation": "/ˈsævi/",
-    "definition": [
-        "n. 实际知识，见识，悟性。指在特定领域（尤指商业或政治）的实用理解和精明判断力。",
-        "adj. 精明的，有见识的，懂行的。形容对某事有深刻理解和实际知识的人。",
-        "v. 理解，懂（非正式用法，尤其用于疑问句或否定句）。",
-        "注意：作为名词时，常与特定领域连用，如 'political {{c1::savvy}}'（政治悟性）。作为形容词时，常置于名词后构成复合形容词，如 'tech-{{c1::savvy}}'（精通科技的）。与 'knowledgeable'（知识渊博的）相比，'{{c1::savvy}}' 更强调实用的、街头智慧式的精明。"
-    ],
-    "example1": "She has impressive business {{c1::savvy}}, which is why her startup has been so successful.",
-    "example2": "To succeed in today's market, you need to be financially {{c1::savvy}} and aware of the latest trends.",
-    "example3": "I don't think he {{c1::savvies}} the full implications of this deal; we need to explain it more clearly.",
-    "example4": "The campaign was run by a team of politically {{c1::savvy}} advisors who knew how to connect with voters.",
-    "example5": "\"{{c1::Savvy}}\" is a word we use to describe practical knowledge, understanding, or shrewdness, especially in a particular field like business or technology."
-}
-```
-
-## 示例2
-```json
-{
-  "word": "dough",
-  "pronunciation": "/doʊ/",
-  "definition": [
-    "n. 生面团",
-    "指用于制作面包、糕点等的生面团，通常由面粉、水和其他成分混合而成",
-    "在俚语中表示金钱，尤指现金",
-    "指任何具有类似面团稠度的柔软、可塑物质"
-  ],
-  "example1": "She kneaded the {{c1::dough}} for ten minutes until it was smooth and elastic.",
-  "example2": "I need to earn some more {{c1::dough}} before I can afford that vacation.",
-  "example3": "After adding the yeast, let the {{c1::dough}} rise in a warm place for an hour.",
-  "example4": "He's rolling in {{c1::dough}} since he started his new business.",
-  "example5": "The children enjoyed playing with the salt {{c1::dough}} they made in art class."
-}
-```
-
-## 注意
-- 确保在每个例句中，使用 {{c1::word}} 标记来突出单词的位置。与 Anki Cloze 要求格式兼容。
-- 请确保给出的单词包含在了每个例句中，且使用了 {{c1::word}} 标记来突出单词的位置，符合 Anki Cloze 要求格式。
-- 若单词有多词性，请在 definition 中分条列出。
-- 尽量指出单词与常见同义词相比在使用上需要注意的细微差别。
-- definition 使用自然的中文释义。
-- definition 中包含了 word 的地方，也改为使用 {{c1::word}} 的形式。
-- 给出的例句尽量覆盖不同语境、不同语法位置。
-- 例句可以包含一句以 "{{c1::word}} is a word ..." 的形式包含单词英文释义的句子。
-- 尽量选取使用单数、现在时态的例句。
-- Do not write any commentary outside the JSON.
-
-## 输入
-要处理的单词是: ''' + f'{word}'
+    with open('prompt_2.txt', 'r', encoding='utf-8') as f:
+        prompt = f.read() + f'{word}'
     for retry in range(5):
         try:
             gpt_answer = ask_gpt(prompt)
