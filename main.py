@@ -9,6 +9,7 @@ import base64
 import time
 import argparse
 from gtts import gTTS
+import yaml
 
 SAMPLE_API_KEY = 'sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
 
@@ -177,36 +178,38 @@ def get_word_info_for_noun(word):
 
 
 def get_word_list():
+    """从 wordlist.yaml 读取单词列表
+
+    YAML 格式：
+        en:
+          default:
+            - savvy
+            - tribulation
+          名词:
+            - dough
+        zh:
+          default:
+            - 你好
+
+    返回: [(word, word_type, word_lang), ...]
+    """
     words = []
-    with open('wordlist.txt', 'r', encoding='utf-8') as f:
-        for line_num, line in enumerate(f, 1):
-            line = line.strip()
-            if not line or line.startswith('#'):
+    with open('wordlist.yaml', 'r', encoding='utf-8') as f:
+        data = yaml.safe_load(f) or {}
+
+    for lang, types in data.items():
+        if not isinstance(types, dict):
+            continue
+        for word_type, word_list in types.items():
+            if not isinstance(word_list, list):
                 continue
+            for word in word_list:
+                if not word or not isinstance(word, str):
+                    continue
+                word = word.strip()
+                if word and not word.startswith('#'):
+                    words.append((word, word_type, lang))
 
-            parts = line.split(':', 2)
-
-            # Ensure we have at least a word
-            if not parts or not parts[0]:
-                print(f"Warning: Line {line_num} has no word: '{line}'")
-                continue
-
-            word = parts[0].strip()
-            if not word:
-                print(f"Warning: Line {line_num} has empty word: '{line}'")
-                continue
-
-            # Set defaults for optional fields
-            word_type = 'default'
-            word_lang = 'en'  # Default to English
-
-            if len(parts) > 1:
-                word_type = parts[1].strip() if parts[1].strip() else word_type
-
-            if len(parts) > 2:
-                word_lang = parts[2].strip() if parts[2].strip() else word_lang
-
-            words.append((word, word_type, word_lang))
     return words
 
 
