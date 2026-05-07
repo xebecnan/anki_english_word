@@ -2,3 +2,4 @@
 /sound/
 /wordlist.yaml
 /config.json
+__pycache__/
