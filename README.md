@@ -8,6 +8,7 @@
 - **自动音频获取**: 从有道词典或 Google TTS 自动下载单词发音
 - **批量添加卡片**: 通过 Anki-Connect API 自动将卡片添加到 Anki 牌组
 - **填空式学习**: 生成的卡片使用 Anki 填空（Cloze）格式，便于记忆
+- **单词辨析模式**: 对比相似单词的用法差异，生成辨析卡片
 
 ## 工作原理
 
@@ -70,10 +71,55 @@ zh:
 ```
 
 - **顶层 key**: 语言代码（如 `en`, `zh`），用于 Google TTS 发音
-- **第二层 key**: 单词类型（如 `default`, `名词`）
+- **第二层 key**: 单词类型（如 `default`, `名词`, `compare`）
   - `default`: 使用标准卡片模板（ShuffledCloze）
   - `名词`: 使用简化的正反面卡片模板
+  - `compare`: 单词辨析模式（见下文）
 - **单词列表**: 每个类型下是一个字符串数组
+
+### 单词辨析模式
+
+用于对比相似单词的用法差异。在配置中添加 `compare` 节点：
+
+```yaml
+en:
+  default:
+    - savvy
+
+  # 辨析模式：每组至少2个单词
+  compare:
+    - [fission, fissure]
+    - [predicament, plight]
+    - [affect, effect, impact]  # 支持超过2个单词
+```
+
+辨析卡片格式：
+
+**正面**:
+```
+Nuclear ___ is a process that releases enormous amounts of energy. ( fission / fissure )
+```
+
+**背面**:
+```
+答案: fission
+
+翻译：核裂变是一个释放巨大能量的过程。
+
+[sound:fission.mp3]
+
+- fission：名词，指分裂、裂变（核裂变、细胞分裂），与句子语境完美匹配
+- fissure：名词，指裂缝、裂隙，与 nuclear 搭配不自然
+```
+
+运行辨析模式：
+```bash
+# 自动检测 compare 节点并运行
+python main.py
+
+# 或显式指定
+python main.py -c
+```
 
 ### 2. 运行程序
 
@@ -106,6 +152,7 @@ python main.py -g
 | `-S, --store-sound` | 获取发音并上传到 Anki |
 | `-g, --google-sound` | 使用 Google TTS 获取发音（默认使用有道） |
 | `-i, --info-only` | 只获取单词释义，不添加卡片 |
+| `-c, --compare` | 单词辨析模式 |
 
 ## 卡片格式
 
@@ -143,14 +190,16 @@ python main.py -g
 
 ```
 .
-├── main.py           # 主程序
-├── prompt_1.txt      # AI 提示词模板（名词）
-├── prompt_2.txt      # AI 提示词模板（通用）
-├── config.json       # 配置文件（API 密钥、代理）
-├── wordlist.yaml     # 单词列表（需自己创建）
-├── sound/            # 音频缓存目录
-├── new_info/         # 待添加的单词信息
-└── archived/         # 已添加到 Anki 的单词归档
+├── main.py                      # 主程序
+├── prompt_1.txt                 # AI 提示词模板（名词）
+├── prompt_2.txt                 # AI 提示词模板（通用）
+├── prompt_compare_sentences.txt # AI 提示词模板（辨析-例句生成）
+├── prompt_compare_analysis.txt  # AI 提示词模板（辨析-句子分析）
+├── config.json                  # 配置文件（API 密钥、代理）
+├── wordlist.yaml                # 单词列表（需自己创建）
+├── sound/                       # 音频缓存目录
+├── new_info/                    # 待添加的单词信息
+└── archived/                    # 已添加到 Anki 的单词归档
 ```
 
 ## 注意事项

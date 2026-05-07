@@ -1,0 +1,40 @@
+请为以下单词各生成5个例句，例句需要能体现单词的独特用法和语境差异：
+
+## 单词列表
+{words}
+
+## 输出格式要求
+Return the answer as a JSON object.
+
+## 示例
+```json
+{
+    "fission": {
+        "definition": "名词，指分裂、裂变（核裂变、细胞分裂）",
+        "examples": [
+            "Nuclear ___ is a process that releases enormous amounts of energy.",
+            "The cell undergoes ___ during mitosis.",
+            "Scientists have been studying binary ___ in bacteria.",
+            "The reactor uses controlled nuclear ___ to generate electricity.",
+            "___ of the atom was a groundbreaking discovery in physics."
+        ]
+    },
+    "fissure": {
+        "definition": "名词，指裂缝、裂隙（岩石、地面、身体的缝隙）",
+        "examples": [
+            "A deep ___ appeared in the glacier after the earthquake.",
+            "The doctor examined the anal ___ during the checkup.",
+            "Water seeped through the ___ in the rock wall.",
+            "The volcano's eruption created a large ___ in the mountainside.",
+            "He suffered from a painful ___ that required medical treatment."
+        ]
+    }
+}
+```
+
+## 注意
+- 每个例句应该是该词的典型用法，能体现其独特含义
+- 例句之间应该覆盖不同的语法位置和语境
+- 例句中使用 ___ 占位符表示目标单词的位置
+- definition 使用自然的中文释义，简洁明了
+- Do not write any commentary outside the JSON.

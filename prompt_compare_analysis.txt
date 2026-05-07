@@ -1,0 +1,41 @@
+请分析以下句子中词汇的替换可能性：
+
+## 句子
+{sentence}
+
+## 目标词
+{target_word}
+
+## 其他词
+{other_words}
+
+## 输出格式要求
+Return the answer as a JSON object.
+
+## 示例
+```json
+{
+    "answer": "fission",
+    "translation": "核裂变是一个释放巨大能量的过程。",
+    "analysis": [
+        {
+            "word": "fission",
+            "is_correct": true,
+            "explanation": "名词，指分裂、裂变（核裂变、细胞分裂），与句子语境（nuclear, energy）完美匹配"
+        },
+        {
+            "word": "fissure",
+            "is_correct": false,
+            "explanation": "名词，指裂缝、裂隙，与 nuclear 搭配不自然，不能描述能量释放过程"
+        }
+    ]
+}
+```
+
+## 注意
+- answer 是填入空格的正确单词
+- translation 是句子的中文翻译
+- analysis 中每个词要说明是否能替换目标词位置，以及为什么
+- 对于正确的词，explanation 要说明为什么它适合这个语境
+- 对于不正确的词，explanation 要说明为什么它不适合，以及它的真实含义是什么
+- Do not write any commentary outside the JSON.

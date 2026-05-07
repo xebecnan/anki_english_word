@@ -201,6 +201,9 @@ def get_word_list():
         if not isinstance(types, dict):
             continue
         for word_type, word_list in types.items():
+            # 跳过 compare 节点
+            if word_type == 'compare':
+                continue
             if not isinstance(word_list, list):
                 continue
             for word in word_list:
@@ -211,6 +214,225 @@ def get_word_list():
                     words.append((word, word_type, lang))
 
     return words
+
+
+def get_compare_groups():
+    """从 wordlist.yaml 读取辨析组
+
+    YAML 格式：
+        en:
+          compare:
+            - [fission, fissure]
+            - [predicament, plight]
+
+    返回: [(word_list, lang), ...]
+    例如: [(['fission', 'fissure'], 'en'), ...]
+    """
+    groups = []
+    with open('wordlist.yaml', 'r', encoding='utf-8') as f:
+        data = yaml.safe_load(f) or {}
+
+    for lang, sections in data.items():
+        if not isinstance(sections, dict):
+            continue
+        compare_section = sections.get('compare', [])
+        if not isinstance(compare_section, list):
+            continue
+        for word_list in compare_section:
+            if isinstance(word_list, list) and len(word_list) >= 2:
+                # 过滤空值和非字符串
+                valid_words = [w.strip() for w in word_list if w and isinstance(w, str)]
+                if len(valid_words) >= 2:
+                    groups.append((valid_words, lang))
+
+    return groups
+
+
+def generate_comparison_sentences(word_list):
+    """为一组单词生成例句（每词5句）
+
+    返回: dict, 格式如:
+        {
+            "fission": {
+                "definition": "名词，指分裂、裂变",
+                "examples": ["Nuclear ___ is...", ...]
+            },
+            ...
+        }
+    """
+    with open('prompt_compare_sentences.txt', 'r', encoding='utf-8') as f:
+        prompt_template = f.read()
+
+    words_str = '\n'.join([f'- {w}' for w in word_list])
+    prompt = prompt_template.replace('{words}', words_str)
+
+    for retry in range(5):
+        try:
+            gpt_answer = ask_gpt(prompt)
+            break
+        except Exception as e:
+            print(f'generate_comparison_sentences error: {e}, retry: {retry}')
+            continue
+
+    # 提取 JSON
+    s = gpt_answer.find('{')
+    e = gpt_answer.rfind('}')
+    json_string = gpt_answer[s:e+1]
+
+    try:
+        result = json.loads(json_string)
+        return result
+    except Exception as e:
+        print(f'PARSE ERROR in generate_comparison_sentences: {e}')
+        print(gpt_answer)
+        return None
+
+
+def analyze_sentence(sentence, target_word, other_words):
+    """分析句子中词汇替换的可能性
+
+    返回: dict, 格式如:
+        {
+            "answer": "fission",
+            "translation": "核裂变是一个释放巨大能量的过程。",
+            "analysis": [
+                {"word": "fission", "is_correct": True, "explanation": "..."},
+                {"word": "fissure", "is_correct": False, "explanation": "..."}
+            ]
+        }
+    """
+    with open('prompt_compare_analysis.txt', 'r', encoding='utf-8') as f:
+        prompt_template = f.read()
+
+    other_words_str = ', '.join(other_words)
+    prompt = prompt_template \
+        .replace('{sentence}', sentence) \
+        .replace('{target_word}', target_word) \
+        .replace('{other_words}', other_words_str)
+
+    for retry in range(5):
+        try:
+            gpt_answer = ask_gpt(prompt)
+            break
+        except Exception as e:
+            print(f'analyze_sentence error: {e}, retry: {retry}')
+            continue
+
+    # 提取 JSON
+    s = gpt_answer.find('{')
+    e = gpt_answer.rfind('}')
+    json_string = gpt_answer[s:e+1]
+
+    try:
+        result = json.loads(json_string)
+        return result
+    except Exception as e:
+        print(f'PARSE ERROR in analyze_sentence: {e}')
+        print(gpt_answer)
+        return None
+
+
+def build_comparison_card(sentence, analysis_result, all_words, audio_url):
+    """构建辨析卡片（使用基础模型）
+
+    返回: dict, 包含 '正面' 和 '背面' 字段
+    """
+    # 将 ___ 替换为实际单词，生成 Front
+    answer = analysis_result.get('answer', '')
+    front = sentence.replace('___', '____')
+    # 添加选项
+    options_str = ' / '.join(all_words)
+    front = f"{front} ( {options_str} )"
+
+    # 构建 Back
+    translation = analysis_result.get('translation', '')
+    analysis = analysis_result.get('analysis', [])
+
+    back_lines = [
+        f"答案: <b>{answer}</b>",
+        "",
+        f"翻译：{translation}",
+        "",
+        f"[sound:{audio_url}]",
+        ""
+    ]
+
+    for item in analysis:
+        word = item.get('word', '')
+        explanation = item.get('explanation', '')
+        back_lines.append(f"- {word}：{explanation}")
+
+    back = '\n'.join(back_lines)
+
+    return {
+        '正面': front,
+        '背面': back,
+        'Sort Field': answer,
+        'QuestionHint': ''
+    }
+
+
+def make_comparison_cards(force, use_google_sound):
+    """生成辨析卡片的主流程"""
+    groups = get_compare_groups()
+    if not groups:
+        print('没有找到辨析组配置')
+        return
+
+    print(f'找到 {len(groups)} 个辨析组')
+
+    total_cards = 0
+    for group_idx, (word_list, lang) in enumerate(groups):
+        print(f'\n=== 辨析组 {group_idx + 1}/{len(groups)}: {word_list} ===')
+
+        # 1. 为每个单词下载发音
+        for word in word_list:
+            if not sound_exist_for_word(word):
+                download_mp3_for_word(word, lang, use_google_sound)
+
+        # 2. 生成例句
+        print(f'生成例句...')
+        sentences_data = generate_comparison_sentences(word_list)
+        if not sentences_data:
+            print(f'生成例句失败，跳过该组')
+            continue
+
+        # 3. 遍历每个单词的每个例句，生成卡片
+        for word in word_list:
+            word_data = sentences_data.get(word, {})
+            examples = word_data.get('examples', [])
+            definition = word_data.get('definition', '')
+
+            print(f'  处理单词 {word}，共 {len(examples)} 个例句')
+
+            for ex_idx, example in enumerate(examples):
+                if not example or '___' not in example:
+                    print(f'    例句 {ex_idx + 1} 格式不正确，跳过')
+                    continue
+
+                # 分析句子
+                other_words = [w for w in word_list if w != word]
+                analysis = analyze_sentence(example, word, other_words)
+
+                if not analysis:
+                    print(f'    例句 {ex_idx + 1} 分析失败，跳过')
+                    continue
+
+                # 上传音频
+                audio_url = anki_media_exist_for_word(word) or upload_mp3_for_card(word)
+
+                # 构建卡片
+                card = build_comparison_card(example, analysis, word_list, audio_url)
+
+                # 添加到 Anki（使用基础模型）
+                result = add_anki_card(card, '名词')  # '名词' 对应基础模型
+                if result:
+                    total_cards += 1
+                    print(f'    例句 {ex_idx + 1} → 卡片已添加')
+                else:
+                    print(f'    例句 {ex_idx + 1} 添加失败')
+
+    print(f'\n完成！共添加 {total_cards} 张辨析卡片')
 
 
 def get_new_info_path_for_word(word):
@@ -644,12 +866,22 @@ def main():
     parser.add_argument('-S', '--store-sound', action='store_true', help='fetch and store sound')
     parser.add_argument('-g', '--google-sound', action='store_true', help='fetch sound from google')
     parser.add_argument('-i', '--info-only', action='store_true', help='fetch info only')
+    parser.add_argument('-c', '--compare', action='store_true', help='单词辨析模式')
     args = parser.parse_args()
 
     force = args.force
     use_google_sound = args.google_sound
 
-    if args.sound_only:
+    # 检查是否有辨析组配置
+    compare_groups = get_compare_groups()
+
+    if args.compare or (compare_groups and not args.sound_only and not args.store_sound and not args.info_only):
+        # 辨析模式
+        if not compare_groups:
+            print('未找到辨析组配置（compare 节点）')
+            return
+        make_comparison_cards(force, use_google_sound)
+    elif args.sound_only:
         fetch_sounds_for_cards(force, use_google_sound)
     elif args.store_sound:
         fetch_and_store_sounds(force, use_google_sound)
