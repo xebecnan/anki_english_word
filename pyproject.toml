@@ -1,0 +1,50 @@
+# pyproject.toml - 现代 Python 项目配置文件
+# 遵循 PEP 621 标准声明项目元数据与依赖
+# 之所以选 setuptools 作为 build backend：最通用、最不容易出兼容性问题
+# 本项目是单脚本工具而非库，但保留 [build-system] 让 `pip install -e .` 可用、依赖能被工具正确识别
+
+[project]
+name = "anki-english-word"
+version = "0.1.0"
+description = "Anki 英语单词卡片生成器"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+    {name = "arnan"},
+]
+keywords = ["anki", "english", "vocabulary", "flashcard"]
+
+# 依赖版本约束用 >= 而不是 ==：
+# 允许小版本自动升级获得 bug fix；如需精确锁定可改为 ==
+# PyPI canonical 名（PEP 503）：import 名是大写或带数字的也按小写写
+dependencies = [
+    "requests>=2.34",
+    "beautifulsoup4>=4.15",
+    "gTTS>=2.5",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+# 安装后可执行 anki-english-word 启动；当前 main.py 已有 if __name__ == "__main__" 入口
+# 如果不需要命令行快捷入口，把整段 [project.scripts] 删掉即可
+anki-english-word = "main:main"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+# 单文件模块（非包目录），显式告诉 setuptools 只打包 main.py
+[tool.setuptools]
+py-modules = ["main"]
+
+# 排除掉非源码目录，避免 sdist 把它们也打进去
+[tool.setuptools.exclude-package-data]
+"*" = [
+    "archived/*",
+    "sound/*",
+    "new_info/*",
+    "config.json",
+    "wordlist.yaml",
+    "prompt_*.txt",
+]

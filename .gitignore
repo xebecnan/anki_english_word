@@ -15,6 +15,12 @@ __pycache__/
 *$py.class
 *.so
 
+# Python 包构建产物
+*.egg-info/
+build/
+dist/
+*.egg
+
 # IDE 配置
 .vscode/
 .idea/
