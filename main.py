@@ -292,6 +292,9 @@ def generate_comparison_sentences(word_list):
 def analyze_sentence(sentence, target_word, other_words):
     """分析句子中词汇替换的可能性
 
+    不变量：answer 是唯一答案（即使多词可行，也只选语境下最地道的一个，
+    其余词在 explanation 中如实说明可行程度）。
+
     返回: dict, 格式如:
         {
             "answer": "fission",
@@ -436,6 +439,25 @@ def make_comparison_cards(force, use_google_sound):
                 if not analysis:
                     print(f'    例句 {ex_idx + 1} 分析失败，跳过')
                     continue
+
+                # 提示词已要求 answer 唯一，但 LLM 可能不遵守，这里兑底校验：
+                # 1) answer 必须是词组内的单词，防止幻觉词/空值进卡片
+                answer = str(analysis.get('answer', '')).strip()
+                if answer not in word_list:
+                    print(f'    例句 {ex_idx + 1} 答案 {answer!r} 不在词组 {word_list} 内，跳过')
+                    continue
+                analysis['answer'] = answer
+
+                # 2) 强制「answer 唯一」不变量，避免卡片自相矛盾；
+                #    解析文字仍保留「可行度相同」等说明，只是视觉上只标一个标准答案
+                for item in analysis.get('analysis', []):
+                    if item.get('word') == answer:
+                        if not item.get('is_correct'):
+                            print(f'    例句 {ex_idx + 1} LLM 将答案词标为错误，已修正')
+                            item['is_correct'] = True
+                    elif item.get('is_correct'):
+                        print(f'    例句 {ex_idx + 1} LLM 标记了多个可行词，已将 {item.get("word")} 归为非答案')
+                        item['is_correct'] = False
 
                 # 上传音频
                 audio_url = anki_media_exist_for_word(word) or upload_mp3_for_card(word)

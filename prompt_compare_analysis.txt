@@ -33,9 +33,13 @@ Return the answer as a JSON object.
 ```
 
 ## 注意
-- answer 是填入空格的正确单词
+- answer 是填入空格的正确单词，必须从候选词中选择，且只能有一个
+- answer 应选语境下最地道、最贴切的词；即使其他词语法上可行，也不能作为 answer
+- is_correct 一律只对 answer 为 true；其余词一律为 false，但 explanation 必须如实区分三种情况：
+  - 与 answer 可行度相同、难以区分优劣的词：如实说明「与 XX 可行度相同，均可使用」，
+    不要为了凑出唯一答案而强行贬低它；此时 answer 取更常见、更典型的一个作为参考答案
+  - 语法可行但不如 answer 贴切的词：说明可行但欠贴切的原因，以及与 answer 的语义/搭配差别
+  - 完全不适合该语境的词：说明为什么不能使用，以及它的真实含义是什么
+- 对 answer 本身，explanation 要说明为什么它最适合这个语境
 - translation 是句子的中文翻译
-- analysis 中每个词要说明是否能替换目标词位置，以及为什么
-- 对于正确的词，explanation 要说明为什么它适合这个语境
-- 对于不正确的词，explanation 要说明为什么它不适合，以及它的真实含义是什么
 - Do not write any commentary outside the JSON.
