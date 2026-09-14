@@ -334,28 +334,33 @@ def analyze_sentence(sentence, target_word, other_words):
 
 
 def build_comparison_card(sentence, analysis_result, all_words, audio_url):
-    """构建辨析卡片（使用基础模型）
+    """构建辨析卡片（使用「填空题」Cloze 模型）
 
-    返回: dict, 包含 '正面' 和 '背面' 字段
+    正面（文字字段）：例句中答案词标记为 {{c1::...}}，下方一行列出候选词
+    背面（Back Extra 字段）：答案、翻译、发音、逐词辨析
+
+    返回: dict, 包含 '文字' 和 'Back Extra' 字段
     """
-    # 将 ___ 替换为实际单词，生成 Front
-    answer = analysis_result.get('answer', '')
-    front = sentence.replace('___', '____')
-    # 添加选项
-    options_str = ' / '.join(all_words)
-    front = f"{front} ( {options_str} )"
+    def esc(text):
+        # LLM 返回的文本可能包含 <、& 等字符，不转义会破坏 HTML 排版
+        return html.escape(str(text))
 
-    # 构建 Back
+    answer = analysis_result.get('answer', '')
+
+    # 填空题模型要求文字字段中存在 {{c1::...}} 标记，否则 Anki 会报“没有找到填空”错误：
+    # 把例句中的 ___ 替换为答案词的 cloze 标记
+    front = sentence.replace('___', '{{c1::' + esc(answer) + '}}')
+    # 候选项单独一行显示；Anki 不渲染裸 '\n'，用 <br> 换行
+    options_str = ' / '.join(esc(w) for w in all_words)
+    front = f'{front}<br>( {options_str} )'
+
+    # 构建 Back Extra
     translation = analysis_result.get('translation', '')
     analysis = analysis_result.get('analysis', [])
 
     # Anki 字段按 HTML 渲染，裸换行符 '\n' 会被折叠成一个空格（整段挤成一行），
-    # 因此用块级 <div> 分行、<ul>/<li> 呈现辨析列表，
-    # 与普通单词路径 build_anki_card 的 HTML 风格保持一致；
-    # 区块间距用内联 margin，避免依赖「基础」模板的 CSS
-    def esc(text):
-        # LLM 返回的文本可能包含 <、& 等字符，不转义会破坏 HTML 排版
-        return html.escape(str(text))
+    # 因此用块级 <div> 分行、<ul>/<li> 呈现辨析列表；
+    # 区块间距用内联 margin，避免依赖模板的 CSS
 
     back_parts = [
         f'<div>答案: <b>{esc(answer)}</b></div>',
@@ -381,10 +386,8 @@ def build_comparison_card(sentence, analysis_result, all_words, audio_url):
     back = ''.join(back_parts)
 
     return {
-        '正面': front,
-        '背面': back,
-        'Sort Field': answer,
-        'QuestionHint': ''
+        '文字': front,
+        'Back Extra': back,
     }
 
 
@@ -440,8 +443,8 @@ def make_comparison_cards(force, use_google_sound):
                 # 构建卡片
                 card = build_comparison_card(example, analysis, word_list, audio_url)
 
-                # 添加到 Anki（使用基础模型）
-                result = add_anki_card(card, '名词')  # '名词' 对应基础模型
+                # 添加到 Anki（使用「填空题」Cloze 模型）
+                result = add_anki_card(card, '填空题')
                 if result:
                     total_cards += 1
                     print(f'    例句 {ex_idx + 1} → 卡片已添加')
@@ -574,7 +577,7 @@ def fetch_and_save_sound(word, word_lang, use_google_sound):
     download_mp3_for_word(word, word_lang, use_google_sound)
 
 
-def add_anki_card(note_fields, word_type):
+def add_anki_card(note_fields, model_name):
     # Set the URL for the Anki-Connect API
     url = "http://localhost:8765"
 
@@ -584,11 +587,8 @@ def add_anki_card(note_fields, word_type):
     # Set the deck name to add the note to
     deck_name = "English::Arnan's English Sentences"
 
-    # Set the model name to use for the new note
-    if word_type == "名词":
-        model_name = "基础"
-    else:
-        model_name = "ShuffledCloze"
+    # 模型名由调用方显式传入（单词卡用 ShuffledCloze/基础，辨析卡用填空题），
+    # 字段结构与模型选择解耦，新增卡片类型时不用再改这里
 
     # # Set the note fields (front and back)
     # note_fields = {"正面": front, "Back": back}
@@ -726,7 +726,9 @@ def add_to_anki(word, word_type):
     info = load_word_info(word)
     audio_url = anki_media_exist_for_word(word) or upload_mp3_for_card(word)
     card = build_anki_card(word, word_type, info, audio_url)
-    add_result = add_anki_card(card, word_type)
+    # 单词类型 → 模型的映射原来写死在 add_anki_card 里，现在由调用方显式选择
+    model_name = '基础' if word_type == '名词' else 'ShuffledCloze'
+    add_result = add_anki_card(card, model_name)
     return add_result and True or False
 
 

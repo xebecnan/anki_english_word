@@ -93,14 +93,17 @@ en:
     - [affect, effect, impact]  # 支持超过2个单词
 ```
 
-辨析卡片格式：
+辨析卡片使用 Anki 的「填空题」（Cloze）模型，字段为 `文字` 和 `Back Extra`：
 
-**正面**:
+**正面（文字）**:
 ```
-Nuclear ___ is a process that releases enormous amounts of energy. ( fission / fissure )
+Nuclear {{c1::fission}} is a process that releases enormous amounts of energy.
+( fission / fissure )
 ```
 
-**背面**:
+例句中答案词被挖空，根据括号里的候选词作答。
+
+**背面（Back Extra）**:
 ```
 答案: fission
 
@@ -109,7 +112,7 @@ Nuclear ___ is a process that releases enormous amounts of energy. ( fission / f
 [sound:fission.mp3]
 
 - fission：名词，指分裂、裂变（核裂变、细胞分裂），与句子语境完美匹配
-- fissure：名词，指裂缝、裂隙，与 nuclear 搭配不自然
+- fissure：名词，指裂缝、裂隙，与 nuclear 搭配不自然（显示为删除线）
 ```
 
 运行辨析模式：
