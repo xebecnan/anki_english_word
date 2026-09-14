@@ -6,6 +6,7 @@ import requests
 import json
 from bs4 import BeautifulSoup
 import base64
+import html
 import time
 import argparse
 from gtts import gTTS
@@ -348,21 +349,36 @@ def build_comparison_card(sentence, analysis_result, all_words, audio_url):
     translation = analysis_result.get('translation', '')
     analysis = analysis_result.get('analysis', [])
 
-    back_lines = [
-        f"答案: <b>{answer}</b>",
-        "",
-        f"翻译：{translation}",
-        "",
-        f"[sound:{audio_url}]",
-        ""
+    # Anki 字段按 HTML 渲染，裸换行符 '\n' 会被折叠成一个空格（整段挤成一行），
+    # 因此用块级 <div> 分行、<ul>/<li> 呈现辨析列表，
+    # 与普通单词路径 build_anki_card 的 HTML 风格保持一致；
+    # 区块间距用内联 margin，避免依赖「基础」模板的 CSS
+    def esc(text):
+        # LLM 返回的文本可能包含 <、& 等字符，不转义会破坏 HTML 排版
+        return html.escape(str(text))
+
+    back_parts = [
+        f'<div>答案: <b>{esc(answer)}</b></div>',
+        f'<div style="margin-top: 0.4em">翻译：{esc(translation)}</div>',
+        f'<div style="margin-top: 0.4em">[sound:{audio_url}]</div>',
     ]
 
+    analysis_items = []
     for item in analysis:
         word = item.get('word', '')
         explanation = item.get('explanation', '')
-        back_lines.append(f"- {word}：{explanation}")
+        # 仅在 LLM 明确标记为错误时给词加删除线；
+        # 字段缺失时保持原样，避免把答案词也划掉
+        if item.get('is_correct') is False:
+            word = f'<s>{esc(word)}</s>'
+        else:
+            word = esc(word)
+        analysis_items.append(f'<li>{word}：{esc(explanation)}</li>')
 
-    back = '\n'.join(back_lines)
+    if analysis_items:
+        back_parts.append('<ul>' + ''.join(analysis_items) + '</ul>')
+
+    back = ''.join(back_parts)
 
     return {
         '正面': front,
