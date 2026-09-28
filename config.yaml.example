@@ -1,0 +1,47 @@
+# =============================================================================
+# Anki 英语单词卡片生成器配置示例
+# 复制本文件为 config.yaml 后按需修改；实际使用的只有 llm.active 指向的 provider
+# =============================================================================
+
+llm:
+  # 当前使用的 provider 名称，切换服务商只需改这一行
+  active: deepseek
+
+  # 各 provider 的连接参数
+  # 所有主流服务商（DeepSeek / OpenAI / Kimi / 通义 / 中转站）都兼容
+  # OpenAI Chat Completions 协议，base_url 填根路径即可（模块会自动拼 /chat/completions）
+  providers:
+
+    deepseek:
+      base_url: https://api.deepseek.com
+      model: deepseek-chat
+      api_key: sk-xxxxxxxxxxxxxxxx
+      # 以下为可选参数（括号内为默认值）
+      # timeout: 25        # 请求超时秒数 (25)
+      # temperature: 1.0   # 生成随机度 (1.0)
+      # retries: 5         # 失败重试次数 (5)
+
+    openai:
+      base_url: https://api.openai.com/v1
+      model: gpt-4o-mini
+      # ${VAR} 写法：从环境变量读取，避免密钥写进文件
+      # 也可以直接删掉这一行，模块会自动尝试 OPENAI_API_KEY 环境变量
+      api_key: ${OPENAI_API_KEY}
+
+    # 第三方中转站示例（OpenAI 兼容）
+    relay:
+      base_url: https://api.ohmygpt.com/v1
+      model: gpt-3.5-turbo
+      api_key: sk-xxxxxxxxxxxxxxxx
+
+    # Kimi (Moonshot) 示例
+    moonshot:
+      base_url: https://api.moonshot.cn/v1
+      model: moonshot-v1-8k
+      api_key: sk-xxxxxxxxxxxxxxxx
+
+# 网络代理：仅用于 Google TTS 等需要翻墙的境外服务，不影响 LLM API 请求
+# 留空或删除此节则不使用代理
+proxies:
+  http: http://localhost:8123
+  https: http://localhost:8123

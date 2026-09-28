@@ -34,9 +34,9 @@ anki-english-word = "main:main"
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
-# 单文件模块（非包目录），显式告诉 setuptools 只打包 main.py
+# 单文件模块（非包目录），显式告诉 setuptools 打包哪些 .py
 [tool.setuptools]
-py-modules = ["main"]
+py-modules = ["main", "llm"]
 
 # 排除掉非源码目录，避免 sdist 把它们也打进去
 [tool.setuptools.exclude-package-data]
@@ -44,7 +44,7 @@ py-modules = ["main"]
     "archived/*",
     "sound/*",
     "new_info/*",
-    "config.json",
+    "config.yaml",
     "wordlist.yaml",
     "prompt_*.txt",
 ]

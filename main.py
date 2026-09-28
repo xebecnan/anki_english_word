@@ -12,90 +12,19 @@ import argparse
 from gtts import gTTS
 import yaml
 
-SAMPLE_API_KEY = 'sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+import llm
 
-if os.path.exists('config.json'):
-    with open('config.json', 'r', encoding='utf-8') as f:
-        config = json.load(f)
-else:
-    config = {
-        "API_KEY": SAMPLE_API_KEY,
-        "PROXIES": { "http": "http://localhost:8123", "https": "http://localhost:8123" }
-    }
-    with open('config.json', 'w', encoding='utf-8') as f:
-        json.dump(config, f)
+# 启动即加载配置并构建 LLM 客户端；配置缺失/非法时打印原因并退出
+# 之所以在模块级做：原实现也是模块级读配置，保持行为一致，
+# 后续所有调用点都能直接用 LLM_CLIENT，不用层层传参
+CONFIG, LLM_CLIENT = llm.ensure_config()
 
-# Set your OpenAI API key and proxy settings
-API_KEY = os.environ.get('DEEPSEEK_API_KEY', config.get('API_KEY', SAMPLE_API_KEY))
-PROXIES = config['PROXIES']
+# 代理仅用于 gTTS 等需要访问 Google 的服务；LLM API 请求不走代理
+# 允许缺节点：不配置代理时 gTTS 直连（连不上会在重试后走有道/报错）
+PROXIES = CONFIG.get('proxies') or {}
 
-if API_KEY == SAMPLE_API_KEY:
-    print('API_KEY not found')
-    sys.exit(1)
-
-# API_URL = "https://api.openai.com/v1/chat/completions"
-# API_URL = "https://api.ohmygpt.com/v1/chat/completions"
-# API_URL = "https://aigptx.top/v1/chat/completions"
-API_URL = "https://api.deepseek.com/chat/completions"
-# LLM_MODEL = "gpt-3.5-turbo"
-LLM_MODEL = "deepseek-chat"
-TIMEOUT_SECONDS = 25
 REQUIRED_TAGS = ('单词', '意思', '音标', '例句', '例句翻译')
 ARCHIVED_DIR = 'archived'
-
-# Function to post a query to ChatGPT and retrieve a response
-def ask_gpt(prompt):
-    # Set the parameters for the API request
-    # model_engine = "davinci"  # Choose the GPT model engine to use
-    max_tokens = 50  # Set the maximum number of tokens in the response
-    temperature = 0.5  # Set the "creativity" of the response
-    stop = "\n"  # Set the stop sequence for the response
-
-    # Set the headers for the API request
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {API_KEY}",
-    }
-
-    # Set the data for the API request
-    system_prompt = ''
-    messages = [{"role": "system", "content": system_prompt}]
-
-    what_i_ask_now = {}
-    what_i_ask_now["role"] = "user"
-    what_i_ask_now["content"] = prompt
-    messages.append(what_i_ask_now)
-
-    payload = {
-        "model": LLM_MODEL,
-        "messages": messages,
-        "temperature": 1.0,  # 1.0,
-        "top_p": 1.0,  # 1.0,
-        "n": 1,
-        "stream": False,
-        "presence_penalty": 0,
-        "frequency_penalty": 0,
-    }
-
-    # Post the query to the API and retrieve the response
-    response = requests.post(
-        url=API_URL,
-        headers=headers,
-        # proxies=PROXIES,
-        json=payload,
-        stream=False,
-        timeout=TIMEOUT_SECONDS
-    )
-
-    # Extract the response text and return it
-    answer = json.loads(response.text)
-    if 'error' in answer:
-        print('!! ERROR !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
-        if 'message' in answer['error']:
-            print(answer['error']['message'])
-        else:
-            print(answer['error'])
-    return answer['choices'][0]['message']['content']
 
 
 
@@ -139,16 +68,13 @@ def extract_valid_json_string(text):
 def get_word_info_new(word):
     with open('prompt_2.txt', 'r', encoding='utf-8') as f:
         prompt = f.read() + f'{word}'
-    for retry in range(5):
-        try:
-            gpt_answer = ask_gpt(prompt)
-            break
-        except Exception as e:
-            print('<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<')
-            print(e)
-            print('<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<')
-            print('retry:', retry)
-            continue
+    # 重试已下沉到 LLMClient.chat 内部，这里只需捕获「重试耗尽」的失败
+    # （原实现在重试耗尽后使用未定义的 gpt_answer 会直接 NameError）
+    try:
+        gpt_answer = LLM_CLIENT.chat(prompt)
+    except llm.LLMError as e:
+        print(f'get_word_info_new failed: {e}')
+        return None
 
     json_string = extract_valid_json_string(gpt_answer)
     if not json_string:
@@ -164,16 +90,11 @@ def get_word_info_for_noun(word):
 音标：/____/
 例句：____
 例句翻译：____'''
-    for retry in range(5):
-        try:
-            info = ask_gpt(prompt)
-            break
-        except Exception as e:
-            print('<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<')
-            print(e)
-            print('<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<')
-            print('retry:', retry)
-            continue
+    try:
+        info = LLM_CLIENT.chat(prompt)
+    except llm.LLMError as e:
+        print(f'get_word_info_for_noun failed: {e}')
+        return None
 
     return check_info(info, word) and info or None
 
@@ -267,13 +188,11 @@ def generate_comparison_sentences(word_list):
     words_str = '\n'.join([f'- {w}' for w in word_list])
     prompt = prompt_template.replace('{words}', words_str)
 
-    for retry in range(5):
-        try:
-            gpt_answer = ask_gpt(prompt)
-            break
-        except Exception as e:
-            print(f'generate_comparison_sentences error: {e}, retry: {retry}')
-            continue
+    try:
+        gpt_answer = LLM_CLIENT.chat(prompt)
+    except llm.LLMError as e:
+        print(f'generate_comparison_sentences failed: {e}')
+        return None
 
     # 提取 JSON
     s = gpt_answer.find('{')
@@ -314,13 +233,11 @@ def analyze_sentence(sentence, target_word, other_words):
         .replace('{target_word}', target_word) \
         .replace('{other_words}', other_words_str)
 
-    for retry in range(5):
-        try:
-            gpt_answer = ask_gpt(prompt)
-            break
-        except Exception as e:
-            print(f'analyze_sentence error: {e}, retry: {retry}')
-            continue
+    try:
+        gpt_answer = LLM_CLIENT.chat(prompt)
+    except llm.LLMError as e:
+        print(f'analyze_sentence failed: {e}')
+        return None
 
     # 提取 JSON
     s = gpt_answer.find('{')
@@ -556,13 +473,18 @@ def download_mp3_for_word(word, lang, use_google_sound):
         print('try google tts')
 
     # 尝试从 google translate 获取
-    assert 'HTTP_PROXY' not in os.environ
-    assert 'HTTPS_PROXY' not in os.environ
-    os.environ['HTTP_PROXY'] = PROXIES['http']
-    os.environ['HTTPS_PROXY'] = PROXIES['https']
+    # gTTS 内部用 requests 下载，requests 会读 HTTP_PROXY/HTTPS_PROXY 环境变量；
+    # 不配置代理时直接连（避免把空值写进环境变量）
+    use_proxy = bool(PROXIES.get('http'))
+    if use_proxy:
+        assert 'HTTP_PROXY' not in os.environ
+        assert 'HTTPS_PROXY' not in os.environ
+        os.environ['HTTP_PROXY'] = PROXIES['http']
+        os.environ['HTTPS_PROXY'] = PROXIES.get('https') or PROXIES['http']
     gTTS(text=word, lang=lang, slow=False).save(filepath)
-    del os.environ['HTTP_PROXY']
-    del os.environ['HTTPS_PROXY']
+    if use_proxy:
+        del os.environ['HTTP_PROXY']
+        del os.environ['HTTPS_PROXY']
 
 
 def fetch_and_save_info(word, word_type, force):

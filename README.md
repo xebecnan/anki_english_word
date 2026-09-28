@@ -4,7 +4,7 @@
 
 ## 功能特点
 
-- **智能释义生成**: 使用 AI (DeepSeek) 为单词生成专业的音标、多义词解释和地道例句
+- **智能释义生成**: 使用可配置的 LLM API（DeepSeek / OpenAI / Kimi / 中转站等）为单词生成专业的音标、多义词解释和地道例句
 - **自动音频获取**: 从有道词典或 Google TTS 自动下载单词发音
 - **批量添加卡片**: 通过 Anki-Connect API 自动将卡片添加到 Anki 牌组
 - **填空式学习**: 生成的卡片使用 Anki 填空（Cloze）格式，便于记忆
@@ -13,7 +13,7 @@
 ## 工作原理
 
 ```
-wordlist.yaml → DeepSeek API → 单词释义(JSON)
+wordlist.yaml → LLM API (可配置 provider) → 单词释义(JSON)
                    ↓
               有道/Google TTS → 发音(MP3)
                    ↓
@@ -21,7 +21,7 @@ wordlist.yaml → DeepSeek API → 单词释义(JSON)
 ```
 
 1. 从 `wordlist.yaml` 读取待处理的单词列表
-2. 调用 DeepSeek API 获取单词的详细信息（释义、音标、5个例句）
+2. 调用 LLM API 获取单词的详细信息（释义、音标、5个例句）
 3. 从有道词典或 Google TTS 下载单词发音
 4. 通过 Anki-Connect API 将音频和卡片信息上传到 Anki
 
@@ -35,19 +35,40 @@ pip install requests beautifulsoup4 gTTS pyyaml
 
 ## 配置
 
-首次运行时，程序会自动创建 `config.json` 配置文件：
+首次运行时，程序会自动生成 `config.yaml` 模板；若检测到旧版 `config.json` 则自动迁移为 `config.yaml`（原文件保留）。
 
-```json
-{
-    "API_KEY": "your-deepseek-api-key",
-    "PROXIES": {
-        "http": "http://localhost:8123",
-        "https": "http://localhost:8123"
-    }
-}
+LLM 服务商通过配置切换（主流服务商均兼容 OpenAI 协议，`base_url` 填根路径即可）：
+
+```yaml
+llm:
+  active: deepseek              # 当前使用的 provider，切换服务商改这一行
+  providers:
+    deepseek:
+      base_url: https://api.deepseek.com
+      model: deepseek-chat
+      api_key: sk-xxx
+    openai:
+      base_url: https://api.openai.com/v1
+      model: gpt-4o-mini
+      api_key: ${OPENAI_API_KEY}   # 支持 ${VAR} 环境变量引用
+    relay:                         # 第三方中转站示例
+      base_url: https://api.ohmygpt.com/v1
+      model: gpt-3.5-turbo
+      api_key: sk-xxx
+
+# 网络代理：仅用于 Google TTS 等境外服务，不影响 LLM 请求
+proxies:
+  http: http://localhost:8123
+  https: http://localhost:8123
 ```
 
-也可以通过环境变量 `DEEPSEEK_API_KEY` 设置 API 密钥。
+更多 provider 示例和可选参数（timeout / temperature / retries）见 `config.yaml.example`。
+
+### api_key 的优先级
+
+1. 配置中的 `${VAR}` 环境变量引用
+2. 环境变量 `{PROVIDER大写}_API_KEY`（如 `DEEPSEEK_API_KEY`、`OPENAI_API_KEY`，兼容旧版行为）
+3. 配置文件中的字面值
 
 ## 使用方法
 
@@ -194,11 +215,13 @@ python main.py -g
 ```
 .
 ├── main.py                      # 主程序
+├── llm.py                       # LLM 访问模块（配置加载 + OpenAI 兼容客户端）
 ├── prompt_1.txt                 # AI 提示词模板（名词）
 ├── prompt_2.txt                 # AI 提示词模板（通用）
 ├── prompt_compare_sentences.txt # AI 提示词模板（辨析-例句生成）
 ├── prompt_compare_analysis.txt  # AI 提示词模板（辨析-句子分析）
-├── config.json                  # 配置文件（API 密钥、代理）
+├── config.yaml.example          # 配置文件模板（多 provider 示例）
+├── config.yaml                  # 配置文件（自动生成，需填 api_key）
 ├── wordlist.yaml                # 单词列表（需自己创建）
 ├── sound/                       # 音频缓存目录
 ├── new_info/                    # 待添加的单词信息
@@ -211,9 +234,9 @@ python main.py -g
 
 2. **牌组名称**: 默认添加到 `English::Arnan's English Sentences` 牌组，可在 `main.py` 中修改 `deck_name` 变量
 
-3. **API 配额**: DeepSeek API 有调用限制，批量处理大量单词时请注意
+3. **API 配额**: LLM API 有调用限制，批量处理大量单词时请注意
 
-4. **网络代理**: 如需使用代理访问 API，请在 `config.json` 中配置
+4. **网络代理**: `config.yaml` 中的 `proxies` 仅用于 Google TTS 等境外服务；LLM API 请求不走代理
 
 ## 开发
 

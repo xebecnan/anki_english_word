@@ -2,6 +2,7 @@
 /archived/
 /sound/
 /wordlist.yaml
+/config.yaml
 /config.json
 
 # Python 虚拟环境
