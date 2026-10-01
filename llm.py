@@ -24,7 +24,7 @@
       https: http://localhost:8123
 
 api_key 的解析优先级（从高到低）：
-1. ${VAR} 显式环境变量引用
+1. ${VAR} 显式环境变量引用（变量已定义时在 load_config 阶段展开）
 2. {PROVIDER大写}_API_KEY 环境变量（如 DEEPSEEK_API_KEY，兼容旧版行为）
 3. 配置文件中的字面值
 """
@@ -81,15 +81,17 @@ def _expand_env_vars(value):
 
     为什么只在字符串值上做正则替换而不是整个文件预处理：
     yaml 值里可能合法地出现 '$'，逐值替换不会误伤其他内容
+
+    为什么变量未定义时保留 ${VAR} 原样而不是警告并展开为空：
+    这里处理的是整份配置，包括未启用的 provider（如示例里的 openai），
+    在这里警告会对没用到的配置产生噪音；残留引用留给 _resolve_api_key，
+    只在 active provider 真正使用时才警告
     """
     if isinstance(value, str):
         def replace(match):
-            var = match.group(1)
-            env = os.environ.get(var)
-            if env is None:
-                print(f'警告: 环境变量 {var} 未定义，已展开为空字符串')
-                return ''
-            return env
+            env = os.environ.get(match.group(1))
+            # 未定义时保留 ${VAR} 原样，交由使用方（_resolve_api_key）处理
+            return env if env is not None else match.group(0)
         return _ENV_VAR_PATTERN.sub(replace, value)
     if isinstance(value, dict):
         return {k: _expand_env_vars(v) for k, v in value.items()}
@@ -100,16 +102,19 @@ def _expand_env_vars(value):
 
 def _resolve_api_key(provider_name, provider_conf):
     """按优先级解析 api_key（见模块 docstring 的优先级说明）"""
-    # 1) ${VAR} 显式引用（_expand_env_vars 已展开，这里只需判断是否残留未展开形式）
-    key = provider_conf.get('api_key', '')
-
-    # 2) {PROVIDER}_API_KEY 环境变量优先于配置文件字面值
-    #    为什么环境变量优先：密钥不入库更安全，且兼容旧版 DEEPSEEK_API_KEY 的行为
+    # {PROVIDER}_API_KEY 环境变量优先于配置文件字面值
+    # 为什么环境变量优先：密钥不入库更安全，且兼容旧版 DEEPSEEK_API_KEY 的行为
     env_key = os.environ.get(f'{provider_name.upper()}_API_KEY')
     if env_key:
         return env_key
 
-    return key
+    # ${VAR} 显式引用：已定义的变量在 load_config 阶段已展开，
+    # 走到这里说明存在未定义变量的残留引用。这是 active provider
+    # 真正用 key 的时刻，此时才警告，避免未启用 provider 触发噪音
+    def _warn_missing(match):
+        print(f'警告: 环境变量 {match.group(1)} 未定义，api_key 解析为空')
+        return ''
+    return _ENV_VAR_PATTERN.sub(_warn_missing, provider_conf.get('api_key', ''))
 
 
 def _create_default_config():
@@ -263,7 +268,7 @@ class LLMClient:
             'temperature': self.temperature,
             'top_p': self.top_p,
             'n': 1,
-            'stream': False,
+            # stream 在 _request_once 里统一设为 True，这里不重复指定
             'presence_penalty': 0,
             'frequency_penalty': 0,
         }
@@ -286,38 +291,76 @@ class LLMClient:
         raise LLMError(f'LLM 请求重试 {self.retries} 次后仍失败: {last_error}')
 
     def _request_once(self, headers, payload):
-        """单次请求，任何失败都抛 LLMError（由 chat 统一重试）"""
+        """单次请求（SSE 流式），任何失败都抛 LLMError（由 chat 统一重试）
+
+        为什么用流式而不是等完整回答（stream=False）：
+        切换到 GLM 这类推理模型后，服务端会先输出大量「思考」token 再给
+        正式回答，非流式请求必须一口气等完「思考 + 回答」；叠加 coding
+        端点的排队波动（实测同一请求一次超 120s、一次 47s），无论
+        timeout 设多大都赌运气。流式下分块持续到达，每次 socket read
+        都会重置超时计时器，「服务端生成多久」不再拖垮客户端；
+        timeout 只需要覆盖「首块等待 + 单次读间隔」
+        """
+        payload = {**payload, 'stream': True}
         try:
             response = requests.post(
                 url=self._build_url(),
                 headers=headers,
                 json=payload,
-                stream=False,
+                stream=True,
                 timeout=self.timeout,
             )
         except requests.RequestException as e:
             raise LLMError(f'网络请求失败: {e}') from e
 
-        try:
-            answer = response.json()
-        except ValueError as e:
-            raise LLMError(
-                f'返回内容不是 JSON (HTTP {response.status_code}): {response.text[:200]}'
-            ) from e
-
-        # API 层错误（key 无效、余额不足等）：HTTP 200 但 body 里有 error 字段
-        if 'error' in answer:
-            message = answer['error'].get('message', answer['error']) \
-                if isinstance(answer['error'], dict) else answer['error']
-            raise LLMError(f'LLM API 错误: {message}')
-
+        # HTTP 层错误（key 无效 401、路径错误 404 等）：错误体不是 SSE，
+        # 实测这类错误服务端秒回，直接读 body 报告即可
         if response.status_code != 200:
-            raise LLMError(f'HTTP {response.status_code}: {response.text[:200]}')
+            body = response.text[:200]
+            response.close()
+            raise LLMError(f'HTTP {response.status_code}: {body}')
 
+        content_parts = []
+        first_line = ''   # 留样：解析不出内容时帮助定位响应到底是什么
         try:
-            return answer['choices'][0]['message']['content']
-        except (KeyError, IndexError, TypeError) as e:
-            raise LLMError(f'返回缺少 choices[0].message.content: {answer}') from e
+            for line in response.iter_lines():
+                if not line:
+                    continue
+                text = line.decode('utf-8')
+                if not first_line:
+                    first_line = text[:200]
+                if not text.startswith('data:'):
+                    continue
+                data = text[len('data:'):].strip()
+                if data == '[DONE]':
+                    break
+                try:
+                    chunk = json.loads(data)
+                except ValueError:
+                    # 个别坏块丢弃即可，不拖垮整个请求
+                    continue
+                # 部分服务端在 HTTP 200 的流内报业务错误（key 无效、余额不足等）
+                if 'error' in chunk:
+                    err = chunk['error']
+                    message = err.get('message', err) if isinstance(err, dict) else err
+                    raise LLMError(f'LLM API 错误: {message}')
+                choices = chunk.get('choices') or []
+                if not choices:
+                    continue
+                delta = choices[0].get('delta') or {}
+                # 推理模型的思考内容在 reasoning_content 里，正式回答才是
+                # 非 streaming 时代的 choices[0].message.content，只拼接后者
+                if delta.get('content'):
+                    content_parts.append(delta['content'])
+        except requests.RequestException as e:
+            raise LLMError(f'流式响应中断: {e}') from e
+        finally:
+            response.close()
+
+        answer = ''.join(content_parts)
+        if not answer.strip():
+            raise LLMError(f'流式响应结束但未收到回答内容（首行样例: {first_line!r}）')
+        return answer
 
 
 def create_client(config):

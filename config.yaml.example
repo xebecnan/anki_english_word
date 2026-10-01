@@ -17,7 +17,7 @@ llm:
       model: deepseek-chat
       api_key: sk-xxxxxxxxxxxxxxxx
       # 以下为可选参数（括号内为默认值）
-      # timeout: 25        # 请求超时秒数 (25)
+      # timeout: 25        # 单次读超时秒数 (25)；请求为流式，只约束首块等待与读间隔
       # temperature: 1.0   # 生成随机度 (1.0)
       # retries: 5         # 失败重试次数 (5)
 
