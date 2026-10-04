@@ -24,9 +24,9 @@
       https: http://localhost:8123
 
 api_key 的解析优先级（从高到低）：
-1. ${VAR} 显式环境变量引用（变量已定义时在 load_config 阶段展开）
-2. {PROVIDER大写}_API_KEY 环境变量（如 DEEPSEEK_API_KEY，兼容旧版行为）
-3. 配置文件中的字面值
+1. {PROVIDER大写}_API_KEY 环境变量（如 DEEPSEEK_API_KEY，兼容旧版行为）
+2. 配置文件中的 api_key；其中 ${VAR} 引用已在 load_config 阶段展开，
+   运行时与字面值等价（变量未定义则解析为空并警告）
 """
 
 import json

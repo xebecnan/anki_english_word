@@ -25,13 +25,25 @@ wordlist.yaml → LLM API (可配置 provider) → 单词释义(JSON)
 3. 从有道词典或 Google TTS 下载单词发音
 4. 通过 Anki-Connect API 将音频和卡片信息上传到 Anki
 
-## 安装依赖
+## 安装
+
+需要 Python 3.11+，以及安装并运行 [Anki](https://apps.ankiweb.net/) 和 [Anki-Connect](https://ankiweb.net/shared/info/2055492159) 插件。
+
+推荐在虚拟环境中以可编辑模式安装（依赖由 `pyproject.toml` 自动装齐，同时获得 `anki-english-word` 命令行入口）：
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install -e .
+```
+
+Windows 下装好后可直接运行仓库里的 `anki.bat` 启动（内部调用 `.venv\Scripts\anki-english-word.exe`，可以带参数透传）。
+
+不想创建虚拟环境的话，也可以手动安装依赖后直接 `python main.py` 运行：
 
 ```bash
 pip install requests beautifulsoup4 gTTS pyyaml
 ```
-
-还需要安装并运行 [Anki](https://apps.ankiweb.net/) 以及 [Anki-Connect](https://ankiweb.net/shared/info/2055492159) 插件。
 
 ## 配置
 
@@ -66,15 +78,14 @@ proxies:
 
 ### api_key 的优先级
 
-1. 配置中的 `${VAR}` 环境变量引用
-2. 环境变量 `{PROVIDER大写}_API_KEY`（如 `DEEPSEEK_API_KEY`、`OPENAI_API_KEY`，兼容旧版行为）
-3. 配置文件中的字面值
+1. 环境变量 `{PROVIDER大写}_API_KEY`（如 `DEEPSEEK_API_KEY`、`OPENAI_API_KEY`，兼容旧版行为）
+2. 配置文件中的 api_key（其中 `${VAR}` 形式的引用在加载配置时展开为环境变量的值，之后与字面值等价；引用的变量未定义时解析为空并警告）
 
 ## 使用方法
 
 ### 1. 创建单词列表
 
-在 `wordlist.yaml` 中添加要学习的单词：
+在 `wordlist.yaml` 中添加要学习的单词（可参考 `wordlist.yaml.example`）：
 
 ```yaml
 # wordlist.yaml
@@ -147,6 +158,8 @@ python main.py -c
 
 ### 2. 运行程序
 
+用 `pip install -e .` 安装后可直接用 `anki-english-word` 命令代替 `python main.py`，参数一致。
+
 ```bash
 # 完整流程：生成释义、下载发音、添加卡片
 python main.py
@@ -216,16 +229,19 @@ python main.py -g
 .
 ├── main.py                      # 主程序
 ├── llm.py                       # LLM 访问模块（配置加载 + OpenAI 兼容客户端）
+├── pyproject.toml               # 项目元数据与依赖声明（pip install -e . 的入口）
+├── anki.bat                     # Windows 便捷启动脚本（调用 .venv 中的命令行入口）
 ├── prompt_1.txt                 # AI 提示词模板（名词）
 ├── prompt_2.txt                 # AI 提示词模板（通用）
 ├── prompt_compare_sentences.txt # AI 提示词模板（辨析-例句生成）
 ├── prompt_compare_analysis.txt  # AI 提示词模板（辨析-句子分析）
 ├── config.yaml.example          # 配置文件模板（多 provider 示例）
 ├── config.yaml                  # 配置文件（自动生成，需填 api_key）
-├── wordlist.yaml                # 单词列表（需自己创建）
-├── sound/                       # 音频缓存目录
-├── new_info/                    # 待添加的单词信息
-└── archived/                    # 已添加到 Anki 的单词归档
+├── wordlist.yaml.example        # 单词列表示例
+├── wordlist.yaml                # 单词列表（参考 example 创建）
+├── sound/                       # 音频缓存目录（运行时生成）
+├── new_info/                    # 待添加的单词信息（运行时生成）
+└── archived/                    # 已添加到 Anki 的单词归档（运行时生成）
 ```
 
 ## 注意事项
@@ -237,10 +253,6 @@ python main.py -g
 3. **API 配额**: LLM API 有调用限制，批量处理大量单词时请注意
 
 4. **网络代理**: `config.yaml` 中的 `proxies` 仅用于 Google TTS 等境外服务；LLM API 请求不走代理
-
-## 开发
-
-详细开发文档请参考项目内的 `docs/` 目录。
 
 ## License
 
