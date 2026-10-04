@@ -180,6 +180,20 @@ python main.py -f
 python main.py -g
 ```
 
+### 修复单词发音
+
+发现某个已添加单词的发音不对时，可只针对该单词重新获取并覆盖 Anki 里的旧音频，卡片无需重建：
+
+```bash
+# 用 gTTS 重取（修复有道念错发音的常用手段）
+python main.py -r complaint
+
+# 改用有道发音
+python main.py -r complaint --youdao
+```
+
+程序会自动探测 Anki 媒体库里该单词实际使用的文件名（兼容旧版无前缀的 `<word>.mp3` 和新版的 `_EAUTO_<word>.mp3`）并同名覆盖，完成后 Anki 同步即可在其他设备生效。
+
 ### 命令行参数
 
 | 参数 | 说明 |
@@ -190,6 +204,8 @@ python main.py -g
 | `-g, --google-sound` | 使用 Google TTS 获取发音（默认使用有道） |
 | `-i, --info-only` | 只获取单词释义，不添加卡片 |
 | `-c, --compare` | 单词辨析模式 |
+| `-r, --refetch-sound WORD` | 重取指定单词的发音并覆盖 Anki 媒体库（默认 gTTS，用于修复念错的发音） |
+| `--youdao` | 配合 `-r` 使用有道发音 |
 
 ## 卡片格式
 

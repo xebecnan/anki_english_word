@@ -460,6 +460,9 @@ def get_pronunciation_mp3(word):
 def download_mp3_for_word(word, lang, use_google_sound):
     print(f'fetching MP3: {word}')
     filepath = get_mp3_path_for_word(word)
+    # sound/ 目录可能尚不存在（如新 clone 后直接用 -r 重取单个单词），
+    # 完整添加流程会被更早的步骤隐式创建，这里显式保证一下
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
 
     # 尝试从有道获取
     if lang == 'en' and not use_google_sound:
@@ -639,14 +642,16 @@ def anki_media_exist_for_word(word):
     return None
 
 
-def upload_mp3_for_card(word):
+def upload_mp3_for_card(word, filename=None):
     # Construct the request payload as a Python dictionary
     filepath = get_mp3_path_for_word(word)
+    # 默认用当前代码的 _EAUTO_ 前缀命名；重取音频时需要以卡片
+    # 实际引用的旧文件名覆盖，所以允许调用方显式指定
     request_payload = {
         "action": "storeMediaFile",
         "version": 6,
         "params": {
-            "filename": '_EAUTO_' + os.path.basename(filepath),
+            "filename": filename or ('_EAUTO_' + os.path.basename(filepath)),
             "data": file_to_base64(filepath)
         }
     }
@@ -821,6 +826,61 @@ def fetch_and_store_sounds(force, use_google_sound):
         print(f'SKIPPED: ', '\n'.join(skipped))
 
 
+def refetch_sound_for_word(word, use_youdao):
+    """重取指定单词的发音，并覆盖 Anki 媒体库中的旧文件
+
+    为什么不用 -S 流程（fetch_and_store_sounds）改改参数实现：
+    - -S 按 wordlist.yaml 全量处理，无法只针对单个单词
+    - -S 固定上传为 _EAUTO_ 前缀名，而旧版脚本生成的卡片引用的是
+      无前缀的 <word>.mp3，同名覆盖不了旧卡，还会留下孤儿文件
+    所以这里先探测 Anki 里实际存在的文件名（即卡片正在引用的），
+    以同名覆盖上传，卡片无需重建即可生效
+    """
+    word = word.strip()
+    # 从 wordlist 查语言（含辨析组）；查不到按英语处理，gTTS 的 lang 参数需要它
+    lang = 'en'
+    for w, _, word_lang in get_word_list():
+        if w == word:
+            lang = word_lang
+            break
+    else:
+        for word_list, word_lang in get_compare_groups():
+            if word in word_list:
+                lang = word_lang
+                break
+
+    # 探测 Anki 媒体库里已有的文件名（新旧两种命名都可能）
+    basename = os.path.basename(get_mp3_path_for_word(word))
+    candidates = ['_EAUTO_' + basename, basename]
+    targets = [name for name in candidates if check_media_for_file(name)]
+    if targets:
+        print(f'Anki 中已有该单词的音频: {targets}，将以同名覆盖')
+    else:
+        # 没找到：可能是单词还没添加过，或卡片引用了其他文件名。
+        # 仍按当前代码的命名规范上传，但明确提示用户核对
+        targets = ['_EAUTO_' + basename]
+        print(f'警告: Anki 媒体库中未找到 {word} 的音频，将上传为 {targets[0]}（请确认卡片是否引用此文件名）')
+
+    # 重新下载发音；需要修复发音时多数是有道 TTS 念错，所以默认 gTTS
+    download_mp3_for_word(word, lang, use_google_sound=not use_youdao)
+    if not mp3_exist_for_word(word):
+        print(f'[FAIL] 下载发音失败: {word}')
+        return
+
+    for name in targets:
+        result = upload_mp3_for_card(word, filename=name)
+        if result:
+            print(f'[DONE] 已覆盖上传: {name}')
+        else:
+            print(f'[FAIL] 上传失败: {name}')
+
+    # 本地文件只是上传的中转，传完即删，与 add 流程的 mark_as_added 行为一致
+    mp3_path = get_mp3_path_for_word(word)
+    if os.path.exists(mp3_path):
+        os.unlink(mp3_path)
+    print('完成。Anki 同步后其他设备生效')
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-f', '--force', action='store_true', help='force to re-fetch info and sound')
@@ -829,6 +889,10 @@ def main():
     parser.add_argument('-g', '--google-sound', action='store_true', help='fetch sound from google')
     parser.add_argument('-i', '--info-only', action='store_true', help='fetch info only')
     parser.add_argument('-c', '--compare', action='store_true', help='单词辨析模式')
+    parser.add_argument('-r', '--refetch-sound', metavar='WORD',
+                        help='重新获取指定单词的发音并覆盖 Anki 媒体（默认 gTTS，用于修复念错的发音）')
+    parser.add_argument('--youdao', action='store_true',
+                        help='配合 -r 使用有道发音（默认 gTTS）')
     args = parser.parse_args()
 
     force = args.force
@@ -847,6 +911,8 @@ def main():
         fetch_sounds_for_cards(force, use_google_sound)
     elif args.store_sound:
         fetch_and_store_sounds(force, use_google_sound)
+    elif args.refetch_sound:
+        refetch_sound_for_word(args.refetch_sound, use_youdao=args.youdao)
     elif args.info_only:
         fetch_info_for_cards(force)
     else:
