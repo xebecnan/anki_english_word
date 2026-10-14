@@ -8,6 +8,7 @@ from bs4 import BeautifulSoup
 import base64
 import html
 import time
+import random
 import argparse
 from gtts import gTTS
 import yaml
@@ -208,8 +209,14 @@ def generate_comparison_sentences(word_list):
         return None
 
 
-def analyze_sentence(sentence, target_word, other_words):
-    """分析句子中词汇替换的可能性
+def analyze_sentence(sentence, candidate_words):
+    """盲测式分析句子中词汇替换的可能性
+
+    为什么不把「目标词」单独标出来：例句是为某个词量身生成的，如果把目标词
+    单独传给 LLM，它会锚定在目标词上倾向确认而非证伪，辨析就失去了独立性。
+    这里只传打乱顺序的全部候选词，让 LLM 独立判断哪个最合适；
+    判断结果与生成意图是否一致，由调用方（make_comparison_cards）校验——
+    不一致说明例句本身没有体现目标词的独特用法，应丢弃而非硬选。
 
     不变量：answer 是唯一答案（即使多词可行，也只选语境下最地道的一个，
     其余词在 explanation 中如实说明可行程度）。
@@ -227,11 +234,13 @@ def analyze_sentence(sentence, target_word, other_words):
     with open('prompt_compare_analysis.txt', 'r', encoding='utf-8') as f:
         prompt_template = f.read()
 
-    other_words_str = ', '.join(other_words)
+    # 打乱候选词顺序，消除 LLM 偏向列表靠前位置词的位置偏差
+    words = list(candidate_words)
+    random.shuffle(words)
+    words_str = ', '.join(words)
     prompt = prompt_template \
         .replace('{sentence}', sentence) \
-        .replace('{target_word}', target_word) \
-        .replace('{other_words}', other_words_str)
+        .replace('{words}', words_str)
 
     try:
         gpt_answer = LLM_CLIENT.chat(prompt)
@@ -349,15 +358,14 @@ def make_comparison_cards(force, use_google_sound):
                     print(f'    例句 {ex_idx + 1} 格式不正确，跳过')
                     continue
 
-                # 分析句子
-                other_words = [w for w in word_list if w != word]
-                analysis = analyze_sentence(example, word, other_words)
+                # 盲测分析：不告知目标词，让 LLM 独立判断
+                analysis = analyze_sentence(example, word_list)
 
                 if not analysis:
                     print(f'    例句 {ex_idx + 1} 分析失败，跳过')
                     continue
 
-                # 提示词已要求 answer 唯一，但 LLM 可能不遵守，这里兑底校验：
+                # 提示词已要求 answer 唯一，但 LLM 可能不遵守，这里兜底校验：
                 # 1) answer 必须是词组内的单词，防止幻觉词/空值进卡片
                 answer = str(analysis.get('answer', '')).strip()
                 if answer not in word_list:
@@ -365,7 +373,14 @@ def make_comparison_cards(force, use_google_sound):
                     continue
                 analysis['answer'] = answer
 
-                # 2) 强制「answer 唯一」不变量，避免卡片自相矛盾；
+                # 2) 盲测答案应与生成意图（目标词）一致；不一致说明例句没有
+                #    真正体现目标词的独特用法，丢弃比硬选更有价值，
+                #    同时避免了「答案与背面发音错位」的问题（音频按目标词取）
+                if answer != word:
+                    print(f'    例句 {ex_idx + 1} 盲测答案 {answer!r} 与目标词 {word!r} 不一致，丢弃该句')
+                    continue
+
+                # 3) 强制「answer 唯一」不变量，避免卡片自相矛盾；
                 #    解析文字仍保留「可行度相同」等说明，只是视觉上只标一个标准答案
                 for item in analysis.get('analysis', []):
                     if item.get('word') == answer:

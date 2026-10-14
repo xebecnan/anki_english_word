@@ -3,11 +3,8 @@
 ## 句子
 {sentence}
 
-## 目标词
-{target_word}
-
-## 其他词
-{other_words}
+## 候选词
+{words}
 
 ## 输出格式要求
 Return the answer as a JSON object.
@@ -35,6 +32,7 @@ Return the answer as a JSON object.
 ## 注意
 - answer 是填入空格的正确单词，必须从候选词中选择，且只能有一个
 - answer 应选语境下最地道、最贴切的词；即使其他词语法上可行，也不能作为 answer
+- 候选词不分主次，请独立判断哪个最适合空格，不要预设某个词更可能是答案
 - is_correct 一律只对 answer 为 true；其余词一律为 false，但 explanation 必须如实区分三种情况：
   - 与 answer 可行度相同、难以区分优劣的词：如实说明「与 XX 可行度相同，均可使用」，
     不要为了凑出唯一答案而强行贬低它；此时 answer 取更常见、更典型的一个作为参考答案
