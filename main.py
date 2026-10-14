@@ -27,6 +27,10 @@ PROXIES = CONFIG.get('proxies') or {}
 REQUIRED_TAGS = ('单词', '意思', '音标', '例句', '例句翻译')
 ARCHIVED_DIR = 'archived'
 
+# 每个失败例句的补位重试上限：重新生成该词的新例句再走一遍校验，
+# 仍失败则接受减量（宁可少几张卡，也不硬塞质量可疑的句子）
+MAX_EXAMPLE_RETRY = 2
+
 
 
 def load_info(info, word):
@@ -320,6 +324,87 @@ def build_comparison_card(sentence, analysis_result, all_words, audio_url):
     }
 
 
+def make_one_comparison_card(example, word, word_list, label=''):
+    """处理单个例句：分析 → 校验 → 构卡 → 入 Anki
+
+    返回 (True, None)：成功入库
+    返回 (False, reason)：例句内容有问题被废弃，reason 为简短原因，
+        可以通过重新生成例句来补位
+    返回 (False, None)：Anki 入库失败（环境问题），换例句重试没有意义
+    """
+    if not example or '___' not in example:
+        print(f'    {label}格式不正确，跳过')
+        return False, '格式不正确（缺少 ___ 占位符）'
+
+    # 盲测分析：不告知目标词，让 LLM 独立判断
+    analysis = analyze_sentence(example, word_list)
+    if not analysis:
+        print(f'    {label}分析失败，跳过')
+        return False, '分析失败'
+
+    # 提示词已要求 answer 唯一，但 LLM 可能不遵守，这里兜底校验：
+    # 1) answer 必须是词组内的单词，防止幻觉词/空值进卡片
+    answer = str(analysis.get('answer', '')).strip()
+    if answer not in word_list:
+        print(f'    {label}答案 {answer!r} 不在词组 {word_list} 内，跳过')
+        return False, f'答案 {answer!r} 不在词组内'
+    analysis['answer'] = answer
+
+    # 2) 盲测答案应与生成意图（目标词）一致；不一致说明例句没有
+    #    真正体现目标词的独特用法，丢弃比硬选更有价值，
+    #    同时避免了「答案与背面发音错位」的问题（音频按目标词取）
+    if answer != word:
+        print(f'    {label}盲测答案 {answer!r} 与目标词 {word!r} 不一致，丢弃该句')
+        return False, f'盲测答案 {answer!r} 与目标词不一致'
+
+    # 3) 强制「answer 唯一」不变量，避免卡片自相矛盾；
+    #    解析文字仍保留「可行度相同」等说明，只是视觉上只标一个标准答案
+    for item in analysis.get('analysis', []):
+        if item.get('word') == answer:
+            if not item.get('is_correct'):
+                print(f'    {label}LLM 将答案词标为错误，已修正')
+                item['is_correct'] = True
+        elif item.get('is_correct'):
+            print(f'    {label}LLM 标记了多个可行词，已将 {item.get("word")} 归为非答案')
+            item['is_correct'] = False
+
+    # 上传音频
+    audio_url = anki_media_exist_for_word(word) or upload_mp3_for_card(word)
+
+    # 构建卡片
+    card = build_comparison_card(example, analysis, word_list, audio_url)
+
+    # 添加到 Anki（使用「填空题」Cloze 模型）
+    return add_anki_card(card, '填空题') and (True, None) or (False, None)
+
+
+def fill_failed_slot(word, reason, word_list, max_retry):
+    """为失败槽位补位：重新生成该词的例句，逐句尝试直到有一句成功
+
+    一次补位会生成 5 个新例句但通常第 1 句就能通过，多余的浪费可接受，
+    换来的是直接复用 generate_comparison_sentences，不用新写单句生成逻辑。
+
+    返回: 'filled' 补位成功 / 'giveup' Anki 入库失败（环境问题，
+          继续换例句重试没有意义）/ 'exhausted' 重试次数用完仍失败
+    """
+    for attempt in range(1, max_retry + 1):
+        print(f'  补位 {word}（原因：{reason}），第 {attempt}/{max_retry} 次重新生成例句...')
+        retry_data = generate_comparison_sentences([word])
+        if not retry_data:
+            continue
+
+        for example in retry_data.get(word, {}).get('examples', []):
+            ok, retry_reason = make_one_comparison_card(example, word, word_list, label='补位例句 ')
+            if ok:
+                return 'filled'
+            if retry_reason is None:
+                print('    补位例句入库失败（Anki 环境问题）')
+                return 'giveup'
+        # 这一批新例句全部没通过校验，进入下一轮
+
+    return 'exhausted'
+
+
 def make_comparison_cards(force, use_google_sound):
     """生成辨析卡片的主流程"""
     groups = get_compare_groups()
@@ -346,64 +431,42 @@ def make_comparison_cards(force, use_google_sound):
             continue
 
         # 3. 遍历每个单词的每个例句，生成卡片
+        group_cards = 0
+        target_cards = 0
+        pending_retries = []  # 内容不合格被废弃的例句，按 (word, 原因) 记录待补位
         for word in word_list:
             word_data = sentences_data.get(word, {})
             examples = word_data.get('examples', [])
-            definition = word_data.get('definition', '')
 
             print(f'  处理单词 {word}，共 {len(examples)} 个例句')
+            target_cards += len(examples)
 
             for ex_idx, example in enumerate(examples):
-                if not example or '___' not in example:
-                    print(f'    例句 {ex_idx + 1} 格式不正确，跳过')
-                    continue
-
-                # 盲测分析：不告知目标词，让 LLM 独立判断
-                analysis = analyze_sentence(example, word_list)
-
-                if not analysis:
-                    print(f'    例句 {ex_idx + 1} 分析失败，跳过')
-                    continue
-
-                # 提示词已要求 answer 唯一，但 LLM 可能不遵守，这里兜底校验：
-                # 1) answer 必须是词组内的单词，防止幻觉词/空值进卡片
-                answer = str(analysis.get('answer', '')).strip()
-                if answer not in word_list:
-                    print(f'    例句 {ex_idx + 1} 答案 {answer!r} 不在词组 {word_list} 内，跳过')
-                    continue
-                analysis['answer'] = answer
-
-                # 2) 盲测答案应与生成意图（目标词）一致；不一致说明例句没有
-                #    真正体现目标词的独特用法，丢弃比硬选更有价值，
-                #    同时避免了「答案与背面发音错位」的问题（音频按目标词取）
-                if answer != word:
-                    print(f'    例句 {ex_idx + 1} 盲测答案 {answer!r} 与目标词 {word!r} 不一致，丢弃该句')
-                    continue
-
-                # 3) 强制「answer 唯一」不变量，避免卡片自相矛盾；
-                #    解析文字仍保留「可行度相同」等说明，只是视觉上只标一个标准答案
-                for item in analysis.get('analysis', []):
-                    if item.get('word') == answer:
-                        if not item.get('is_correct'):
-                            print(f'    例句 {ex_idx + 1} LLM 将答案词标为错误，已修正')
-                            item['is_correct'] = True
-                    elif item.get('is_correct'):
-                        print(f'    例句 {ex_idx + 1} LLM 标记了多个可行词，已将 {item.get("word")} 归为非答案')
-                        item['is_correct'] = False
-
-                # 上传音频
-                audio_url = anki_media_exist_for_word(word) or upload_mp3_for_card(word)
-
-                # 构建卡片
-                card = build_comparison_card(example, analysis, word_list, audio_url)
-
-                # 添加到 Anki（使用「填空题」Cloze 模型）
-                result = add_anki_card(card, '填空题')
-                if result:
-                    total_cards += 1
+                ok, reason = make_one_comparison_card(example, word, word_list, label=f'例句 {ex_idx + 1} ')
+                if ok:
+                    group_cards += 1
                     print(f'    例句 {ex_idx + 1} → 卡片已添加')
-                else:
+                elif reason is None:
                     print(f'    例句 {ex_idx + 1} 添加失败')
+                else:
+                    pending_retries.append((word, reason))
+
+        # 4. 补位重试：废弃的例句用该词的新例句补齐，仍失败则接受减量
+        if pending_retries:
+            print(f'\n  {len(pending_retries)} 个例句未通过校验，开始补位重试（每槽最多 {MAX_EXAMPLE_RETRY} 次）')
+
+        for word, reason in pending_retries:
+            outcome = fill_failed_slot(word, reason, word_list, MAX_EXAMPLE_RETRY)
+            if outcome == 'filled':
+                group_cards += 1
+            elif outcome == 'exhausted':
+                print(f'  补位失败: {word}（{MAX_EXAMPLE_RETRY} 轮新例句均未通过校验），接受减量')
+            else:  # giveup：Anki 环境问题，重试无意义，不再浪费 LLM 调用
+                print('  放弃其余补位（Anki 入库失败，重试无意义）')
+                break
+
+        total_cards += group_cards
+        print(f'  本组完成: {group_cards}/{target_cards} 张卡片')
 
     print(f'\n完成！共添加 {total_cards} 张辨析卡片')
 
