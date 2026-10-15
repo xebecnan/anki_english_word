@@ -2,7 +2,7 @@
 
 ## 单词列表
 {words}
-
+{focus_section}
 ## 输出格式要求
 Return the answer as a JSON object.
 
@@ -37,4 +37,9 @@ Return the answer as a JSON object.
 - 例句之间应该覆盖不同的语法位置和语境
 - 例句中使用 ___ 占位符表示目标单词的位置
 - definition 使用自然的中文释义，简洁明了
+- 每个例句必须让目标词成为该语境下的最佳答案：候选词中往往有更常见、
+  更口语化的近义词，要通过语域（正式/书面/文学 vs 口语）、典型搭配、
+  语义侧重等差异，让目标词在该句中明显比近义词更贴切
+- 不要生成"把候选词中任何近义词填进去都成立"的中性句子——这类句子会在
+  盲测校验（由另一个 LLM 独立选词）时被判成更常见的近义词而废弃
 - Do not write any commentary outside the JSON.

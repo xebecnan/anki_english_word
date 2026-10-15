@@ -27,8 +27,11 @@ PROXIES = CONFIG.get('proxies') or {}
 REQUIRED_TAGS = ('单词', '意思', '音标', '例句', '例句翻译')
 ARCHIVED_DIR = 'archived'
 
-# 每个失败例句的补位重试上限：重新生成该词的新例句再走一遍校验，
-# 仍失败则接受减量（宁可少几张卡，也不硬塞质量可疑的句子）
+# 补位重试上限：某个单词的例句未通过校验时，最多重新生成多少「批」新例句去补位，
+# 仍补不齐则接受减量（宁可少几张卡，也不硬塞质量可疑的句子）
+# 按「批」而不是按「槽位」计数：例句被废往往是系统性的（如近义词组中
+# 较少见词的例句总被判成更常见的近义词），按槽位重试会反复生成注定
+# 失败的批次，LLM 调用成倍浪费
 MAX_EXAMPLE_RETRY = 2
 
 
@@ -175,8 +178,12 @@ def get_compare_groups():
     return groups
 
 
-def generate_comparison_sentences(word_list):
+def generate_comparison_sentences(word_list, focus=None):
     """为一组单词生成例句（每词5句）
+
+    focus 不为空时表示「补位重试」场景：只为该词生成例句，
+    但把组内其余词作为辨析参照一并列出，让新例句针对近义词做语境区分，
+    而不是再产出“任何近义词都能填”的中性句子。
 
     返回: dict, 格式如:
         {
@@ -190,8 +197,26 @@ def generate_comparison_sentences(word_list):
     with open('prompt_compare_sentences.txt', 'r', encoding='utf-8') as f:
         prompt_template = f.read()
 
-    words_str = '\n'.join([f'- {w}' for w in word_list])
-    prompt = prompt_template.replace('{words}', words_str)
+    if focus:
+        # 补位场景：单词列表只列目标词，组内其余词放进「辨析参照」节，
+        # 让模型明确知道竞争者是谁，而不是闷头生成“典型用法”
+        words_str = f'- {focus}'
+        siblings = [w for w in word_list if w != focus]
+        sibling_lines = '\n'.join(f'- {w}' for w in siblings)
+        focus_section = (
+            '## 同组近义词（辨析参照，不要为它们生成例句）\n'
+            f'{sibling_lines}\n\n'
+            f'本次只需为 {focus} 生成例句，输出 JSON 只包含 "{focus}" 这一个键。\n'
+            f'生成每个例句时都要与上面的近义词对比，确保在该句的语域、搭配和语境下，'
+            f'{focus} 是比它们更贴切的最佳选择。\n\n'
+        )
+    else:
+        words_str = '\n'.join([f'- {w}' for w in word_list])
+        focus_section = ''
+
+    prompt = prompt_template \
+        .replace('{words}', words_str) \
+        .replace('{focus_section}', focus_section)
 
     try:
         gpt_answer = LLM_CLIENT.chat(prompt)
@@ -378,31 +403,52 @@ def make_one_comparison_card(example, word, word_list, label=''):
     return add_anki_card(card, '填空题') and (True, None) or (False, None)
 
 
-def fill_failed_slot(word, reason, word_list, max_retry):
-    """为失败槽位补位：重新生成该词的例句，逐句尝试直到有一句成功
+def fill_failed_slots(pending_retries, word_list, max_retry):
+    """补位失败槽位：按单词分组重新生成例句，用新例句尽量填回所有失败槽位
 
-    一次补位会生成 5 个新例句但通常第 1 句就能通过，多余的浪费可接受，
-    换来的是直接复用 generate_comparison_sentences，不用新写单句生成逻辑。
+    为什么按单词分组而不是每个失败槽位各自重试：
+    例句被废往往是系统性的（同一个词的例句总因同样的原因不达标），
+    按槽位重试会为每个槽位各生成一批注定失败的例句；按词分组后，
+    每个词的重试批次数有上限（max_retry 批），一批新例句也顺带能补多个槽位。
 
-    返回: 'filled' 补位成功 / 'giveup' Anki 入库失败（环境问题，
-          继续换例句重试没有意义）/ 'exhausted' 重试次数用完仍失败
+    补位生成时把整个词组传给模型（focus 指定目标词），让新例句针对
+    组内近义词做语境区分；否则只会再产出一批“谁都能填”的中性句。
+
+    返回: (filled, gaveup)
+        filled: 成功补位的例句数
+        gaveup: True 表示 Anki 入库失败（环境问题），继续换例句重试没有意义
     """
-    for attempt in range(1, max_retry + 1):
-        print(f'  补位 {word}（原因：{reason}），第 {attempt}/{max_retry} 次重新生成例句...')
-        retry_data = generate_comparison_sentences([word])
-        if not retry_data:
-            continue
+    need_by_word = {}
+    for word, _reason in pending_retries:
+        need_by_word[word] = need_by_word.get(word, 0) + 1
 
-        for example in retry_data.get(word, {}).get('examples', []):
-            ok, retry_reason = make_one_comparison_card(example, word, word_list, label='补位例句 ')
-            if ok:
-                return 'filled'
-            if retry_reason is None:
-                print('    补位例句入库失败（Anki 环境问题）')
-                return 'giveup'
-        # 这一批新例句全部没通过校验，进入下一轮
+    filled = 0
+    for word, need in need_by_word.items():
+        remaining = need
+        for attempt in range(1, max_retry + 1):
+            print(f'  补位 {word}（还差 {remaining} 句），第 {attempt}/{max_retry} 批重新生成例句...')
+            retry_data = generate_comparison_sentences(word_list, focus=word)
+            if not retry_data:
+                continue
 
-    return 'exhausted'
+            for example in retry_data.get(word, {}).get('examples', []):
+                ok, retry_reason = make_one_comparison_card(example, word, word_list, label='补位例句 ')
+                if ok:
+                    remaining -= 1
+                    if remaining == 0:
+                        break
+                elif retry_reason is None:
+                    print('    补位例句入库失败（Anki 环境问题）')
+                    return filled, True
+            if remaining == 0:
+                break  # 该词所有槽位已补齐，无需再生成新批次
+            # 一批新例句没能补齐剩余槽位，进入下一批（或耗尽后接受减量）
+
+        if remaining > 0:
+            print(f'  补位失败: {word}（{max_retry} 批新例句仍未补齐，缺 {remaining} 句），接受减量')
+        filled += need - remaining
+
+    return filled, False
 
 
 def make_comparison_cards(force, use_google_sound):
@@ -453,17 +499,12 @@ def make_comparison_cards(force, use_google_sound):
 
         # 4. 补位重试：废弃的例句用该词的新例句补齐，仍失败则接受减量
         if pending_retries:
-            print(f'\n  {len(pending_retries)} 个例句未通过校验，开始补位重试（每槽最多 {MAX_EXAMPLE_RETRY} 次）')
+            print(f'\n  {len(pending_retries)} 个例句未通过校验，开始补位重试（每个单词最多 {MAX_EXAMPLE_RETRY} 批新例句）')
 
-        for word, reason in pending_retries:
-            outcome = fill_failed_slot(word, reason, word_list, MAX_EXAMPLE_RETRY)
-            if outcome == 'filled':
-                group_cards += 1
-            elif outcome == 'exhausted':
-                print(f'  补位失败: {word}（{MAX_EXAMPLE_RETRY} 轮新例句均未通过校验），接受减量')
-            else:  # giveup：Anki 环境问题，重试无意义，不再浪费 LLM 调用
-                print('  放弃其余补位（Anki 入库失败，重试无意义）')
-                break
+        filled, gaveup = fill_failed_slots(pending_retries, word_list, MAX_EXAMPLE_RETRY)
+        group_cards += filled
+        if gaveup:  # Anki 环境问题，重试无意义，不再浪费 LLM 调用
+            print('  放弃其余补位（Anki 入库失败，重试无意义）')
 
         total_cards += group_cards
         print(f'  本组完成: {group_cards}/{target_cards} 张卡片')
