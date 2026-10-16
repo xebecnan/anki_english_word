@@ -76,6 +76,34 @@ class LLMError(Exception):
     """LLM API 调用失败（网络错误、HTTP 错误、返回格式错误等）"""
 
 
+# 已知服务商「输入侧内容审核」报错的特征词（小写匹配）
+# 这类错误是内容安全过滤对本次输入的确定性拒绝：同样的输入重发多少次
+# 结果都一样，逐次退避重试（2+4+8+16s）只会白等拖慢流程，应立即失败。
+# 注意只列「输入」侧特征：「输出」侧审核带随机性（temperature>0 时
+# 重采样有机会绕过），仍值得走正常的重试流程
+_INPUT_FILTER_ERROR_PATTERNS = (
+    'content_policy_violation',   # OpenAI 风格
+    'content exists risk',        # DeepSeek 风格
+)
+
+
+def is_input_filter_error(error):
+    """判断是否为「输入触发内容审核」类错误（确定性失败，重试无意义）
+
+    已知报错原文直接匹配；其余靠启发式：报错同时提到 input/输入
+    与 sensitive/敏感/content policy 时按输入侧审核处理。
+    方舟的实测报错「The request failed because the input may contain
+    sensitive information」即由该启发式命中
+    """
+    message = str(error).lower()
+    if any(p in message for p in _INPUT_FILTER_ERROR_PATTERNS):
+        return True
+    mentions_input = 'input' in message or '输入' in message
+    mentions_filter = ('sensitive' in message or '敏感' in message
+                       or 'content policy' in message or '内容政策' in message)
+    return mentions_input and mentions_filter
+
+
 def _expand_env_vars(value):
     """递归展开配置中的 ${VAR} 环境变量引用
 
@@ -252,6 +280,9 @@ class LLMClient:
 
         为什么重试放在这里而不是调用方：main.py 原来在 5 个调用点
         各写了一遍相同的 retry 循环，下沉后调用方只需一行
+
+        例外：「输入触发内容审核」类错误不重试（见 is_input_filter_error），
+        同样的输入重发必然再被拒，退避等待纯属浪费时间
         """
         headers = {
             'Content-Type': 'application/json',
@@ -287,6 +318,11 @@ class LLMClient:
                 print('<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<')
                 print(e)
                 print('<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<')
+                if is_input_filter_error(e):
+                    # 内容审核拒绝是确定性的：同一输入重发必然再被拒，
+                    # 立即抛出让调用方丢弃本条内容，去生成/处理下一条
+                    print('输入触发内容审核（重试无意义），立即失败')
+                    raise
 
         raise LLMError(f'LLM 请求重试 {self.retries} 次后仍失败: {last_error}')
 

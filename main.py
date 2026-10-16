@@ -364,7 +364,9 @@ def make_one_comparison_card(example, word, word_list, label=''):
     # 盲测分析：不告知目标词，让 LLM 独立判断
     analysis = analyze_sentence(example, word_list)
     if not analysis:
-        print(f'    {label}分析失败，跳过')
+        # 打印原句：分析失败常见于例句触发了服务商的内容审核（如涉暴力、
+        # 镇压类语境），留下原句才能定位是哪句话、要不要改写
+        print(f'    {label}分析失败，跳过：{example}')
         return False, '分析失败'
 
     # 提示词已要求 answer 唯一，但 LLM 可能不遵守，这里兜底校验：
