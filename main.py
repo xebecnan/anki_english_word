@@ -475,6 +475,12 @@ def make_comparison_cards(force, use_google_sound):
     for group_idx, (word_list, lang) in enumerate(groups):
         print(f'\n=== 辨析组 {group_idx + 1}/{len(groups)}: {word_list} ===')
 
+        # 已处理过的组直接跳过：默认模式每次都会串行跑到这里，
+        # 没有这层防重就会重复调 LLM 并重复建卡（-f 强制重跑）
+        if not force and os.path.exists(get_compare_done_path(word_list)):
+            print('SKIP: 该辨析组已处理过（-f 强制重跑）')
+            continue
+
         # 1. 为每个单词下载发音
         for word in word_list:
             if not sound_exist_for_word(word):
@@ -520,6 +526,17 @@ def make_comparison_cards(force, use_google_sound):
         total_cards += group_cards
         print(f'  本组完成: {group_cards}/{target_cards} 张卡片')
 
+        # 组正常走完（含接受减量）才标记已处理；Anki 入库失败（gaveup）
+        # 时不标记，修复环境后重跑可补齐缺失卡片——代价是组内已成功
+        # 部分会重复建卡，输出里已提醒
+        if not gaveup:
+            done_path = get_compare_done_path(word_list)
+            os.makedirs(os.path.dirname(done_path), exist_ok=True)
+            with open(done_path, 'w', encoding='utf-8') as f:
+                f.write(' '.join(word_list))
+        else:
+            print('  注意: 本组未标记为已处理（Anki 入库失败），修复后重跑可补齐，但组内已成功部分会重复建卡')
+
     print(f'\n完成！共添加 {total_cards} 张辨析卡片')
 
 
@@ -539,6 +556,19 @@ def get_new_info_path_for_word(word):
 
 def get_archived_path_for_word(word):
     return os.path.join(ARCHIVED_DIR, time.strftime("%Y-%m"), sanitize_name(word))
+
+
+def get_compare_done_path(word_list):
+    """辨析组的「已处理」标记文件路径
+
+    辨析流程没有单词那样的 new_info→archived 生命周期（例句每次都重新
+    生成，没有稳定的中间产物可归档），所以组正常走完后写一个标记文件。
+    为什么需要：默认模式串行处理所有待办（普通类型 + 辨析组），而辨析组
+    重复运行会重新调 LLM 并重复建卡，必须防重。按组而非按单词标记，
+    因为组内单词的例句是互相参照生成的，部分重跑会破坏辨析语境
+    """
+    name = 'compare_' + '_'.join(sanitize_name(w) for w in word_list)
+    return os.path.join(ARCHIVED_DIR, time.strftime("%Y-%m"), name)
 
 
 def is_word_archieved(word):
@@ -1041,8 +1071,8 @@ def main():
     # 检查是否有辨析组配置
     compare_groups = get_compare_groups()
 
-    if args.compare or (compare_groups and not args.sound_only and not args.store_sound and not args.info_only):
-        # 辨析模式
+    if args.compare:
+        # 显式 -c：只跑辨析模式
         if not compare_groups:
             print('未找到辨析组配置（compare 节点）')
             return
@@ -1056,7 +1086,13 @@ def main():
     elif args.info_only:
         fetch_info_for_cards(force)
     else:
+        # 默认模式串行处理所有待办：普通类型组（default/名词/词组…）
+        # + 辨析组。不再互斥：原来「有 compare 节就只跑辨析」导致普通
+        # 类型被静默跳过，用户得手动注释切换。防重靠各流程自身的机制：
+        # 普通类型走 archived 归档，辨析组走已处理标记
         make_anki_cards_from_word_list(force, use_google_sound)
+        if compare_groups:
+            make_comparison_cards(force, use_google_sound)
 
 
 if __name__ == '__main__':

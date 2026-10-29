@@ -169,11 +169,11 @@ en:
 
 运行辨析模式：
 ```bash
-# 自动检测 compare 节点并运行
-python main.py
-
-# 或显式指定
+# 只运行辨析模式
 python main.py -c
+
+# 默认模式也会处理辨析组：普通类型跑完后接着跑 compare（已处理的组自动跳过）
+python main.py
 ```
 
 ### 2. 运行程序
