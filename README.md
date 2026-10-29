@@ -8,6 +8,7 @@
 - **自动音频获取**: 从有道词典或 Google TTS 自动下载单词发音
 - **批量添加卡片**: 通过 Anki-Connect API 自动将卡片添加到 Anki 牌组
 - **填空式学习**: 生成的卡片使用 Anki 填空（Cloze）格式，便于记忆
+- **词组产出模式**: 针对短语动词/搭配的产出型卡片：从「想说什么中文时用它」讲起，覆盖可分性、近义辨析和小品词重音
 - **单词辨析模式**: 对比相似单词的用法差异，生成辨析卡片
 
 ## 工作原理
@@ -96,6 +97,8 @@ en:
     - epiphany
   名词:
     - dough
+  词组:
+    - drift off
 
 zh:
   default:
@@ -103,9 +106,10 @@ zh:
 ```
 
 - **顶层 key**: 语言代码（如 `en`, `zh`），用于 Google TTS 发音
-- **第二层 key**: 单词类型（如 `default`, `名词`, `compare`）
+- **第二层 key**: 单词类型（如 `default`, `名词`, `词组`, `compare`）
   - `default`: 使用标准卡片模板（ShuffledCloze）
   - `名词`: 使用简化的正反面卡片模板
+  - `词组`: 词组/短语动词模式（仍用 ShuffledCloze 模板，改用词组专属讲解，见下文）
   - `compare`: 单词辨析模式（见下文）
 - **单词列表**: 每个类型下是一个字符串数组
 
@@ -145,6 +149,22 @@ Nuclear {{c1::fission}} is a process that releases enormous amounts of energy.
 
 - fission：名词，指分裂、裂变（核裂变、细胞分裂），与句子语境完美匹配
 - fissure：名词，指裂缝、裂隙，与 nuclear 搭配不自然（显示为删除线）
+```
+
+### 词组模式（短语动词/搭配）
+
+用于 drift off、give up 这类短语动词和动词搭配。学习者通常认识其中每个单词，痛点是不会在口语中主动使用整个词组，所以卡片设计是产出导向的：
+
+- **definition 从「想说什么中文时用它」讲起**，并覆盖语法（及物性/可分性）、语域、近义辨析、发音（重音落在小品词上）四个维度
+- **例句挖空整个词组**（含屈折形式，如 drifted off），例句模拟真实口语产出场景
+- 卡片复用 ShuffledCloze 模板，只是讲解内容由 `prompt_phrase.txt` 生成
+- 有道 TTS 对带空格短语可正常发音；本地/媒体库文件名中空格自动转为下划线（`drift off` → `drift_off.mp3`）
+
+```yaml
+en:
+  词组:
+    - drift off
+    - give up
 ```
 
 运行辨析模式：
@@ -249,6 +269,7 @@ python main.py -r complaint --youdao
 ├── anki.bat                     # Windows 便捷启动脚本（调用 .venv 中的命令行入口）
 ├── prompt_1.txt                 # AI 提示词模板（名词）
 ├── prompt_2.txt                 # AI 提示词模板（通用）
+├── prompt_phrase.txt            # AI 提示词模板（词组/短语动词，产出导向）
 ├── prompt_compare_sentences.txt # AI 提示词模板（辨析-例句生成）
 ├── prompt_compare_analysis.txt  # AI 提示词模板（辨析-句子分析）
 ├── config.yaml.example          # 配置文件模板（多 provider 示例）

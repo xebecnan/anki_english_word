@@ -1,6 +1,7 @@
 # 本地实例文件（仓库里有 .example 模板，不要提交真实数据）
 /archived/
 /sound/
+/new_info/
 /wordlist.yaml
 /config.yaml
 /config.json

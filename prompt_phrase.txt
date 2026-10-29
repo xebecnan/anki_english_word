@@ -1,0 +1,41 @@
+请扮演专业的面向中高级学习者的 ESL teacher，对给出的英语词组（短语动词、动词搭配等）进行讲解。
+
+学习者通常认识词组中的每个单词，但不会在口语产出中主动使用整个词组，讲解要围绕这个痛点展开：什么意思、什么场景用、怎么读、和近义表达怎么选。
+
+## 输出格式要求
+Return the answer as a JSON object.
+
+## 示例
+```json
+{
+    "word": "drift off",
+    "pronunciation": "/ˌdrɪft ˈɒf/",
+    "definition": [
+        "使用场景：想说『不知不觉睡着了』时用，译为：睡着、入睡（口语）",
+        "语法：不及物短语动词，不可分开，不能说 drift somebody off；主语是人",
+        "语域：口语、非正式，强调『不知不觉、渐进地』入睡的过程感",
+        "辨析：fall asleep 是中性通用说法；doze off / nod off 更强调『打了个盹』；drop off 与 drift off 几乎同义，口语中都很常用",
+        "发音：重音落在小品词 off 上（短语动词的典型特征），drift 结尾的 t 与 off 连读"
+    ],
+    "example1": "I was so exhausted that I {{c1::drifted off}} on the couch before the movie ended.",
+    "example2": "After a long day at work, she usually {{c1::drifts off}} within minutes of lying down.",
+    "example3": "He was {{c1::drifting off}} when his phone suddenly rang.",
+    "example4": "The meeting was so boring that several attendees visibly {{c1::drifted off}}.",
+    "example5": "\"{{c1::Drift off}}\" is a phrasal verb meaning to fall asleep gradually, often without intending to."
+}
+```
+
+## 注意
+- 例句中的 {{c1::...}} 标记必须包住整个词组（含屈折后的形式，如 drifted off / drifting off），符合 Anki Cloze 格式要求。
+- 例句模拟真实的口语产出场景（第一人称叙述、日常对话），让学习者建立『想表达这个意思 → 用这个词组』的直接映射。
+- 例句覆盖不同时态和语法位置；词组在真实语料中大多以屈折形式出现，不要拘泥于原形。
+- definition 第一条必须是「使用场景」：从中文表达出发，说明想说什么的时候该用它，并给出贴切的中文翻译。
+- definition 必须包含语法条目：及物性与可分性（宾语能否插在词组中间、代词宾语的位置），这是短语动词最容易出错的地方；不是短语动词则说明其搭配规则。
+- definition 必须包含辨析条目：与近义表达（同义词、更简单的说法）的语域和语义差异，帮助学习者在产出时选对词。
+- definition 必须包含发音条目：重音位置（短语动词的重音通常落在小品词上）和连读要点。
+- definition 使用自然的中文，其中出现词组本身的地方用 {{c1::word}} 形式标记。
+- 例句中应有一句以 "{{c1::word}} is a phrasal verb meaning ..." 形式给出英文释义的句子。
+- Do not write any commentary outside the JSON.
+
+## 输入
+要处理的词组是:

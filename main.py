@@ -27,6 +27,14 @@ PROXIES = CONFIG.get('proxies') or {}
 REQUIRED_TAGS = ('单词', '意思', '音标', '例句', '例句翻译')
 ARCHIVED_DIR = 'archived'
 
+# 非默认词条类型 → prompt 模板文件的映射，未命中的走通用单词模板 prompt_2.txt。
+# 词组（短语动词/搭配）与单个单词的认知重点不同：学习者通常认识其中每个单词，
+# 缺的是「什么场景用、可分性、小品词重音」，所以用专属模板。
+# JSON 字段结构与单词一致，卡片仍复用 ShuffledCloze，差异只在内容生成层
+PROMPT_FILE_BY_TYPE = {
+    '词组': 'prompt_phrase.txt',
+}
+
 # 补位重试上限：某个单词的例句未通过校验时，最多重新生成多少「批」新例句去补位，
 # 仍补不齐则接受减量（宁可少几张卡，也不硬塞质量可疑的句子）
 # 按「批」而不是按「槽位」计数：例句被废往往是系统性的（如近义词组中
@@ -73,9 +81,10 @@ def extract_valid_json_string(text):
     return json_string
 
 
-def get_word_info_new(word):
-    with open('prompt_2.txt', 'r', encoding='utf-8') as f:
-        prompt = f.read() + f'{word}'
+def get_word_info_new(word, word_type=None):
+    prompt_file = PROMPT_FILE_BY_TYPE.get(word_type, 'prompt_2.txt')
+    with open(prompt_file, 'r', encoding='utf-8') as f:
+        prompt = f.read() + word
     # 重试已下沉到 LLMClient.chat 内部，这里只需捕获「重试耗尽」的失败
     # （原实现在重试耗尽后使用未定义的 gpt_answer 会直接 NameError）
     try:
@@ -514,12 +523,22 @@ def make_comparison_cards(force, use_google_sound):
     print(f'\n完成！共添加 {total_cards} 张辨析卡片')
 
 
+def sanitize_name(word):
+    """把词条转成文件名安全的形式
+
+    词组（如 drift off）含空格，而 Anki 的 [sound:...] 引用和媒体探测
+    对带空格的文件名不可靠，统一转成下划线。
+    只影响磁盘/媒体库文件名；卡片内容里显示的词条保持原样。
+    """
+    return word.replace(' ', '_')
+
+
 def get_new_info_path_for_word(word):
-    return os.path.join('new_info', word)
+    return os.path.join('new_info', sanitize_name(word))
 
 
 def get_archived_path_for_word(word):
-    return os.path.join(ARCHIVED_DIR, time.strftime("%Y-%m"), word)
+    return os.path.join(ARCHIVED_DIR, time.strftime("%Y-%m"), sanitize_name(word))
 
 
 def is_word_archieved(word):
@@ -527,7 +546,7 @@ def is_word_archieved(word):
         path = os.path.join(ARCHIVED_DIR, name)
         if not os.path.isdir(path):
             continue
-        word_path = os.path.join(path, word)
+        word_path = os.path.join(path, sanitize_name(word))
         if not os.path.isfile(word_path):
             continue
         return True
@@ -535,7 +554,7 @@ def is_word_archieved(word):
 
 
 def get_mp3_path_for_word(word):
-    return os.path.join('sound', f"{word}.mp3")
+    return os.path.join('sound', f"{sanitize_name(word)}.mp3")
 
 
 def already_have_info_for_word(word):
@@ -618,7 +637,7 @@ def fetch_and_save_info(word, word_type, force):
     if word_type == '名词':
         info = get_word_info_for_noun(word)
     else:
-        info = get_word_info_new(word)
+        info = get_word_info_new(word, word_type)
     if info:
         save_word_info(word, info)
 
